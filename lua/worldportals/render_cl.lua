@@ -1,6 +1,7 @@
 
 -- Setup variables
-wp.matDummy = Material( "wp/black" )
+wp.matBlack = Material( "wp/black" )
+wp.matTrans = Material( "wp/trans" )
 wp.matView = CreateMaterial(
     "UnlitGeneric",
     "GMODScreenspace",
@@ -10,7 +11,7 @@ wp.matView = CreateMaterial(
         [ "$vertexalpha" ] = "1",
     }
 )
-wp.matView2 = CreateMaterial("WorldPortals", "Core_DX90", {["$basetexture"] = wp.matDummy:GetName(), ["$model"] = "1"})
+wp.matView2 = CreateMaterial("WorldPortals", "Core_DX90", {["$basetexture"] = wp.matBlack:GetName(), ["$model"] = "1"})
 
 wp.portals = {}
 wp.drawing = true --default portals to not draw
@@ -115,6 +116,16 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov )
                 local camOrigin = wp.TransformPortalPos( plyOrigin, portal, exitPortal )
                 local camAngle = wp.TransformPortalAngle( plyAngle, portal, exitPortal )
 
+                local zfar = portal:GetZFar()
+                if zfar > 0 then
+                    local relative_pos = plyOrigin - portal:GetPos()
+                    local portal_to_exit_dist = exitPortal:GetPos():Distance(portal:GetPos())
+                    local adjusted_zfar = portal_to_exit_dist + relative_pos:Dot(portal:GetForward())
+                    zfar = math.max(adjusted_zfar, zfar)
+                else
+                    zfar = nil
+                end
+
                 wp.drawing = true
                 wp.drawingent = portal
                     render.RenderView( {
@@ -130,8 +141,8 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov )
                         drawmonitors = false,
                         drawviewmodel = false,
                         bloomtone = true,
-                        viewid = 1 -- VIEW_3DSKY
-                        --zfar = 1500
+                        viewid = 1, -- VIEW_3DSKY
+                        zfar = zfar
                     } )
                 wp.drawing = false
                 wp.drawingent = nil
@@ -157,3 +168,7 @@ hook.Add( "ShouldDrawLocalPlayer", "WorldPortals_Render", function()
     end
 end )
 ]]--
+
+hook.Add( "PreDrawHalos", "WorldPortals_Render", function()
+    if wp.drawing then return false end
+end )

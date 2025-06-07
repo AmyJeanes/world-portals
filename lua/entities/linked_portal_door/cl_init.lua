@@ -5,7 +5,7 @@ AccessorFunc( ENT, "texture", "Texture" )
 
 function ENT:DrawPortal(exitPortal)
     if self:GetThickness() == 0 or hook.Call("wp-allowthickportal", GAMEMODE, self, exitPortal)==false then
-        render.DrawQuadEasy( self:GetPos() -( self:GetForward() * 5 ), self:GetForward(), self:GetWidth(), self:GetHeight(), Color(0,0,0), self:GetAngles().roll )
+        render.DrawQuadEasy( self:GetPos() -( self:GetForward() * 5 ), self:GetForward(), self:GetWidth(), self:GetHeight(), color_black, self:GetAngles().roll )
     elseif self:GetInverted() then
         for _,quad in ipairs(self.RenderQuads) do
             render.DrawQuad(self:LocalToWorld(quad[1]), self:LocalToWorld(quad[2]), self:LocalToWorld(quad[3]), self:LocalToWorld(quad[4]), color_black)     
@@ -34,7 +34,7 @@ function ENT:Draw()
             wp.matView2:SetTexture( "$basetexture", texture )
             render.SetMaterial( wp.matView2 )
         else
-            render.SetMaterial( wp.matDummy )
+            render.SetMaterial( wp.matBlack )
         end
         self:DrawPortal(exitPortal)
     else
@@ -52,7 +52,12 @@ function ENT:Draw()
             render.SetStencilCompareFunction( STENCIL_ALWAYS )
         end
 
-        render.SetMaterial( wp.matDummy )
+        local transparency = self:GetTransparency()
+        if transparency > 0 then
+            render.SetMaterial( wp.matTrans )
+        else
+            render.SetMaterial( wp.matBlack )
+        end
         render.SetColorModulation( 1, 1, 1 )
 
         self:DrawPortal(exitPortal)
@@ -61,8 +66,18 @@ function ENT:Draw()
             render.SetStencilCompareFunction( STENCIL_EQUAL )
 
             wp.matView:SetTexture( "$basetexture", texture )
-            render.SetMaterial( wp.matView )
-            render.DrawScreenQuad()
+
+            if transparency > 0 then
+                cam.Start2D()
+                    surface.SetDrawColor(255,255,255,transparency)
+                    surface.SetMaterial( wp.matView )
+                    surface.DrawTexturedRect( 0, 0, width, height )
+                cam.End2D()
+            else
+                render.SetMaterial( wp.matView )
+                render.DrawScreenQuad()
+            end
+
             render.SetStencilEnable( false )
         end
     end
@@ -76,5 +91,13 @@ net.Receive("WorldPortals_VRMod_SetAngle", function()
         local ang = vrmod.GetOriginAng()
         ang.y = ang.y + yawOffset
         vrmod.SetOriginAng(ang)
+    end
+end)
+
+net.Receive("WorldPortals_Teleport", function()
+    local portal = net.ReadEntity()
+    local ent = net.ReadEntity()
+    if IsValid(portal) and IsValid(ent) then
+        hook.Call("wp-teleport", GAMEMODE, portal, ent)
     end
 end)

@@ -52,16 +52,21 @@ function ENT:Initialize()
 end
 
 function ENT:SetupDataTables()
-    self:NetworkVar( "Entity", 0, "Exit" )
-    self:NetworkVar( "Int", 1, "Width" )
-    self:NetworkVar( "Int", 2, "Height" )
-    self:NetworkVar( "Int", 3, "DisappearDist" )
-    self:NetworkVar( "Int", 4, "Thickness" )
-    self:NetworkVar( "String", 0, "CustomLink" )
-    self:NetworkVar( "Bool", 0, "Inverted" )
+    self:NetworkVar( "Entity", "Exit" )
 
-    self:NetworkVar( "Vector", 0, "ExitPosOffset" )
-    self:NetworkVar( "Angle", 0, "ExitAngOffset" )
+    self:NetworkVar( "Int", "Width" )
+    self:NetworkVar( "Int", "Height" )
+    self:NetworkVar( "Int", "DisappearDist" )
+    self:NetworkVar( "Int", "Thickness" )
+    self:NetworkVar( "Int", "Transparency" )
+    self:NetworkVar( "Int", "ZFar" )
+    
+    self:NetworkVar( "String", "CustomLink" )
+    
+    self:NetworkVar( "Bool", "Inverted" )
+
+    self:NetworkVar( "Vector", "ExitPosOffset" )
+    self:NetworkVar( "Angle", "ExitAngOffset" )
 
     self:NetworkVarNotify("Width", function(ent, name, old, new) ent:SetupBounds(new) end)
     self:NetworkVarNotify("Height", function(ent, name, old, new) ent:SetupBounds(nil, new) end)
