@@ -93,3 +93,11 @@ net.Receive("WorldPortals_VRMod_SetAngle", function()
         vrmod.SetOriginAng(ang)
     end
 end)
+
+net.Receive("WorldPortals_Teleport", function()
+    local portal = net.ReadEntity()
+    local ent = net.ReadEntity()
+    if IsValid(portal) and IsValid(ent) then
+        hook.Call("wp-teleport", GAMEMODE, portal, ent)
+    end
+end)

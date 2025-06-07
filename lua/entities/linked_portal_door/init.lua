@@ -8,6 +8,7 @@ AccessorFunc( ENT, "partnername", "PartnerName" )
 AccessorFunc( ENT, "enableteleport", "EnableTeleport", FORCE_BOOL )
 
 util.AddNetworkString("WorldPortals_VRMod_SetAngle")
+util.AddNetworkString("WorldPortals_Teleport")
 
 -- Collect properties
 function ENT:KeyValue( key, value )
@@ -123,6 +124,10 @@ function ENT:Touch( ent )
             ent:ForcePlayerDrop()
             
             hook.Call("wp-teleport", GAMEMODE, self, ent)
+            net.Start("WorldPortals_Teleport")
+                net.WriteEntity(self)
+                net.WriteEntity(ent)
+            net.Broadcast()
         end
     end
 end
