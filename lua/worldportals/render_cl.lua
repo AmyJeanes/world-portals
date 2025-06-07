@@ -19,7 +19,7 @@ wp.rendermode = false
 
 -- Start drawing the portals
 -- This prevents the game from crashing when loaded for the first time
-hook.Add( "PostRender", "WorldPortals_StasrtRender", function()
+hook.Add( "PostRender", "WorldPortals_StartRender", function()
     wp.drawing = false
     hook.Remove( "PostRender", "WorldPortals_StartRender" )
 end )
