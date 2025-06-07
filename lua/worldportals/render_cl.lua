@@ -168,3 +168,7 @@ hook.Add( "ShouldDrawLocalPlayer", "WorldPortals_Render", function()
     end
 end )
 ]]--
+
+hook.Add( "PreDrawHalos", "WorldPortals_Render", function()
+    if wp.drawing then return false end
+end )
