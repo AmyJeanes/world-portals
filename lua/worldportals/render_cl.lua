@@ -2,6 +2,7 @@
 -- Setup variables
 wp.matBlack = Material( "wp/black" )
 wp.matTrans = Material( "wp/trans" )
+wp.matInvis = Material( "wp/invis" )
 wp.matView = CreateMaterial(
     "UnlitGeneric",
     "GMODScreenspace",

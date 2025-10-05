@@ -60,13 +60,16 @@ function ENT:SetupDataTables()
     self:NetworkVar( "Int", "Thickness" )
     self:NetworkVar( "Int", "Transparency" )
     self:NetworkVar( "Int", "ZFar" )
-    
+
     self:NetworkVar( "String", "CustomLink" )
-    
+
     self:NetworkVar( "Bool", "Inverted" )
 
     self:NetworkVar( "Vector", "ExitPosOffset" )
     self:NetworkVar( "Angle", "ExitAngOffset" )
+
+    self:NetworkVar( "Vector", "ModelPos" )
+    self:NetworkVar( "Angle", "ModelAng" )
 
     self:NetworkVarNotify("Width", function(ent, name, old, new) ent:SetupBounds(new) end)
     self:NetworkVarNotify("Height", function(ent, name, old, new) ent:SetupBounds(nil, new) end)

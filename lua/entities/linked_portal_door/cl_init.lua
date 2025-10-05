@@ -4,11 +4,15 @@ include( "shared.lua" )
 AccessorFunc( ENT, "texture", "Texture" )
 
 function ENT:DrawPortal(exitPortal)
-    if self:GetThickness() == 0 or hook.Call("wp-allowthickportal", GAMEMODE, self, exitPortal)==false then
+    if not (self:GetModel() == "models/error.mdl") then
+        render.ModelMaterialOverride( wp.matInvis )
+        render.Model({model = self:GetModel(), pos = self:LocalToWorld(self:GetModelPos()), angle = self:LocalToWorldAngles(self:GetModelAng())})
+        render.ModelMaterialOverride( false )
+    elseif self:GetThickness() == 0 or hook.Call("wp-allowthickportal", GAMEMODE, self, exitPortal)==false then
         render.DrawQuadEasy( self:GetPos() -( self:GetForward() * 5 ), self:GetForward(), self:GetWidth(), self:GetHeight(), color_black, self:GetAngles().roll )
     elseif self:GetInverted() then
         for _,quad in ipairs(self.RenderQuads) do
-            render.DrawQuad(self:LocalToWorld(quad[1]), self:LocalToWorld(quad[2]), self:LocalToWorld(quad[3]), self:LocalToWorld(quad[4]), color_black)     
+            render.DrawQuad(self:LocalToWorld(quad[1]), self:LocalToWorld(quad[2]), self:LocalToWorld(quad[3]), self:LocalToWorld(quad[4]), color_black)
         end
     else
         render.DrawBox(self:GetPos(), self:GetAngles(), self.RenderMin, self.RenderMax, color_black)
