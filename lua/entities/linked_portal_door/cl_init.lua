@@ -101,7 +101,13 @@ end)
 net.Receive("WorldPortals_Teleport", function()
     local portal = net.ReadEntity()
     local ent = net.ReadEntity()
+    local new_pos = net.ReadVector()
+    local new_angle = net.ReadAngle()
     if IsValid(portal) and IsValid(ent) then
-        hook.Call("wp-teleport", GAMEMODE, portal, ent)
+        ent:SetPos( new_pos )
+        if not ent:IsPlayer() then
+            ent:SetAngles( new_angle )
+        end
+        hook.Call("wp-teleport", GAMEMODE, portal, ent, new_pos, new_angle)
     end
 end)

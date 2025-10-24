@@ -123,10 +123,12 @@ function ENT:Touch( ent )
             
             ent:ForcePlayerDrop()
             
-            hook.Call("wp-teleport", GAMEMODE, self, ent)
+            hook.Call("wp-teleport", GAMEMODE, self, ent, new_pos, new_angle)
             net.Start("WorldPortals_Teleport")
                 net.WriteEntity(self)
                 net.WriteEntity(ent)
+                net.WriteVector(new_pos)
+                net.WriteAngle(new_angle)
             net.Broadcast()
         end
     end
