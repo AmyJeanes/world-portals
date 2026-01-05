@@ -40,6 +40,9 @@ function ENT:KeyValue( key, value )
     elseif ( key == "EnableTeleport" ) then
         self:SetEnableTeleport( tobool(value) )
 
+    elseif ( key == "Open" ) then
+        self:SetOpen( tobool(value) )
+
     elseif ( string.Left( key, 2 ) == "On" ) then
         self:StoreOutput( key, value )
     end
@@ -47,7 +50,7 @@ end
 
 -- Teleportation
 function ENT:Touch( ent )
-    if self:GetEnableTeleport() == false then return end
+    if (not self:GetOpen()) or (not self:GetEnableTeleport()) then return end
     local exit = self:GetExit()
     if not IsValid(exit) then return end
     
@@ -138,8 +141,11 @@ function ENT:AcceptInput( inputName, activator, caller, data )
     if ( inputName == "SetPartner" ) then
         self:SetPartnerName( data )
         self:SetExit( ents.FindByName( data )[1] )
-
     elseif ( inputName == "EnableTeleport" ) then
         self:SetEnableTeleport( tobool(data) )
+    elseif ( inputName == "Open" ) then
+        self:SetOpen( true )
+    elseif ( inputName == "Close" ) then
+        self:SetOpen( false )
     end
 end

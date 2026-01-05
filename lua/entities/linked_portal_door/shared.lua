@@ -45,6 +45,8 @@ function ENT:Initialize()
     self:SetSolid( SOLID_OBB )
     self:SetNotSolid( true )
     self:SetCollisionGroup( COLLISION_GROUP_WORLD )
+    self:SetOpen(true)
+    self:SetEnableTeleport(true)
 
     self:DrawShadow( false )
 
@@ -64,6 +66,8 @@ function ENT:SetupDataTables()
     self:NetworkVar( "String", "CustomLink" )
 
     self:NetworkVar( "Bool", "Inverted" )
+    self:NetworkVar( "Bool", "Open" )
+    self:NetworkVar( "Bool", "EnableTeleport" )
 
     self:NetworkVar( "Vector", "ExitPosOffset" )
     self:NetworkVar( "Angle", "ExitAngOffset" )
