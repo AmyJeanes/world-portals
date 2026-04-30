@@ -3,7 +3,7 @@ include( "shared.lua" )
 
 AccessorFunc( ENT, "texture", "Texture" )
 
-local res_cvar = CreateClientConVar("worldportals_resolution_percentage", "100", true, false, "World Portals - Render resolution percentage for portals", 1, 100)
+CreateClientConVar("worldportals_resolution_percentage", "100", true, false, "World Portals - Render resolution percentage for portals", 1, 100)
 
 local res = ((GetConVar("worldportals_resolution_percentage"):GetInt())/100)
 
@@ -15,7 +15,7 @@ function ENT:DrawPortal(exitPortal)
     if not (self:GetModel() == "models/error.mdl") then
         render.ModelMaterialOverride( wp.matInvis )
         render.Model({model = self:GetModel(), pos = self:LocalToWorld(self:GetModelPos()), angle = self:LocalToWorldAngles(self:GetModelAng())})
-        render.ModelMaterialOverride( false )
+        render.ModelMaterialOverride( nil )
     elseif self:GetThickness() == 0 or hook.Call("wp-allowthickportal", GAMEMODE, self, exitPortal)==false then
         render.DrawQuadEasy( self:GetPos() -( self:GetForward() * 5 ), self:GetForward(), self:GetWidth(), self:GetHeight(), color_black, self:GetAngles().roll )
     elseif self:GetInverted() then
