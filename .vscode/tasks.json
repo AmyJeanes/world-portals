@@ -1,0 +1,22 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Install Tools",
+            "type": "shell",
+            "command": "pwsh -File \"${workspaceFolder}/scripts/install-tools.ps1\"",
+            "problemMatcher": [],
+            "runOptions": {
+                "runOn": "folderOpen"
+            },
+            "presentation": {
+                "reveal": "silent",
+                "panel": "dedicated",
+                "showReuseMessage": false,
+                "clear": true
+            }
+        }
+    ]
+}

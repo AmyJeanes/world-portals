@@ -15,8 +15,9 @@ local function crossDist(vec1, vec2)
     return math.sqrt(vec1:LengthSqr() * vec2:LengthSqr() - vec1:Dot(vec2)^2)
 end
 
+---@return number
 local function arctan2(y, x)
-    if ((x != 0) or (y != 0)) then
+    if ((x ~= 0) or (y ~= 0)) then
         if (math.abs(x) >= math.abs(y)) then
             if (x >= 0) then
                 return math.atan(y / x)
@@ -111,7 +112,7 @@ function wp.GetFirstPortalHit(source, direction)
         Distance = 0,
         HitPos = Vector(0,0,0)
     }
-    for k,v in pairs(ents.FindByClass("linked_portal_door")) do
+    for _,v in pairs(ents.FindByClass("linked_portal_door")) do
         if v.GetExit and IsValid(v:GetExit()) then
             local hitPos = util.IntersectRayWithPlane(source, direction, v:GetPos(), v:GetForward())
 

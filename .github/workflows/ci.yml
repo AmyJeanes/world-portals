@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - dev
+  push:
+    branches:
+      - dev
+      - renovate/*
+  workflow_dispatch:
+
+jobs:
+  glua-check:
+    name: GLua Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Run glua_check
+        shell: pwsh
+        run: ./scripts/glua-check.ps1 -Sarif results.sarif
+
+      - name: Upload SARIF
+        if: always() && hashFiles('results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # v4
+        with:
+          sarif_file: results.sarif
+          category: glua_check

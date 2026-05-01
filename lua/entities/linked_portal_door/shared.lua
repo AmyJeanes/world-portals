@@ -40,8 +40,13 @@ function ENT:Initialize()
 
     if SERVER then
         self:SetTrigger(true)
-        self:SetOpen(true)
-        self:SetEnableTeleport(true)
+        -- Map-set properties apply before Initialize, so we skip here to avoid overwriting them
+        if not self.OpenSetByMap then
+            self:SetOpen(true)
+        end
+        if not self.EnableTeleportSetByMap then
+            self:SetEnableTeleport(true)
+        end
     end
 
     self:SetMoveType( MOVETYPE_NONE )

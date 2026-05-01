@@ -17,10 +17,10 @@ function ENT:KeyValue( key, value )
         self:SetExit( ents.FindByName( value )[1] )
 
     elseif ( key == "width" ) then
-        self:SetWidth( tonumber(value) *2 )
+        self:SetWidth( (tonumber(value) or 0) *2 )
 
     elseif ( key == "height" ) then
-        self:SetHeight( tonumber(value) *2 )
+        self:SetHeight( (tonumber(value) or 0) *2 )
 
     elseif ( key == "thickness" ) then
         self:SetThickness( tonumber(value) )
@@ -39,9 +39,15 @@ function ENT:KeyValue( key, value )
 
     elseif ( key == "EnableTeleport" ) then
         self:SetEnableTeleport( tobool(value) )
+        self.EnableTeleportSetByMap = true
 
     elseif ( key == "Open" ) then
         self:SetOpen( tobool(value) )
+        self.OpenSetByMap = true
+
+    elseif ( key == "startactive" or key == "StartActive" ) then
+        self:SetOpen( tobool(value) )
+        self.OpenSetByMap = true
 
     elseif ( string.Left( key, 2 ) == "On" ) then
         self:StoreOutput( key, value )
@@ -56,7 +62,7 @@ function ENT:Touch( ent )
     
     if IsValid( self:GetParent() ) then
         local ents = constraint.GetAllConstrainedEntities( self:GetParent() ) -- don't mess up this contraption we're on
-        for k,v in pairs( ents ) do
+        for _,v in pairs( ents ) do
             if v == ent then
                 return
             end
@@ -82,6 +88,7 @@ function ENT:Touch( ent )
             end
         
             
+            ---@type table<integer, {[1]: Vector, [2]: Angle}>?
             local store
             if ent:IsRagdoll() then
                 store={}
@@ -113,10 +120,10 @@ function ENT:Touch( ent )
                 self:TriggerOutput("OnEntityTeleportFromMe", ent)
                 exit:TriggerOutput("OnEntityTeleportToMe", ent)
             end
-            if ent:IsRagdoll() then
+            if store then
                 for i=0,ent:GetPhysicsObjectCount() do
                     local bone=ent:GetPhysicsObjectNum(i)
-                    if IsValid(bone) then
+                    if IsValid(bone) and store[i] then
                         bone:SetPos(ent:LocalToWorld(store[i][1]))
                         bone:SetAngles(ent:LocalToWorldAngles(store[i][2]))
                         bone:SetVelocityInstantaneous(new_velocity)

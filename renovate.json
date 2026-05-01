@@ -1,0 +1,24 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices",
+    ":automergeDigest",
+    ":automergeMinor"
+  ],
+  "automergeType": "branch",
+  "forkProcessing": "enabled",
+  "pinDigest": {
+    "automerge": true
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^scripts/install-tools\\.ps1$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?\\s+\\$\\w+\\s*=\\s*'(?<currentValue>[^']+)'"
+      ]
+    }
+  ]
+}
