@@ -14,10 +14,20 @@ jobs:
   glua-check:
     name: GLua Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Run glua_check
         shell: pwsh
-        run: ./scripts/glua-check.ps1
+        run: ./scripts/glua-check.ps1 -Sarif results.sarif
+
+      - name: Upload SARIF
+        if: always() && hashFiles('results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
+        with:
+          sarif_file: results.sarif
+          category: glua_check
