@@ -37,6 +37,9 @@ function ENT:KeyValue( key, value )
 
         self:SetAngles( Angle( unpack(args) ) )
 
+    elseif ( key == "falseworld" ) then
+        self:SetFalseWorld( value )
+
     elseif ( key == "EnableTeleport" ) then
         self:SetEnableTeleport( tobool(value) )
         self.EnableTeleportSetByMap = true

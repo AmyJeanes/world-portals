@@ -17,7 +17,10 @@ end )
 local function PairWithExits()
     for _, portal in ipairs( ents.FindByClass( "linked_portal_door" ) ) do
         if not IsValid( portal:GetExit() ) then
-            portal:SetExit( ents.FindByName( portal:GetPartnerName() )[1] )
+            local name = portal:GetPartnerName()
+            if name and name ~= "" then
+                portal:SetExit( ents.FindByName( name )[1] )
+            end
         end
     end
 end

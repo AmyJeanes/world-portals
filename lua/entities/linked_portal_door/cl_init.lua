@@ -34,7 +34,8 @@ function ENT:Draw()
     if not (shouldrender or drawblack) then return end
 
     local exitPortal = self:GetExit()
-    if not IsValid(exitPortal) then return end
+    local falseWorld = self:GetFalseWorld()
+    if not IsValid(exitPortal) and not falseWorld then return end
     hook.Call("wp-predraw", GAMEMODE, self, exitPortal)
 
     local width, height = ScrW()*res, ScrH()*res

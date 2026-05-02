@@ -37,6 +37,7 @@ function ENT:SetupBounds(w, h, t)
 end
 
 function ENT:Initialize()
+
     if SERVER then
         self:SetTrigger(true)
         -- Map-set properties apply before Initialize, so we skip here to avoid overwriting them
@@ -69,6 +70,7 @@ function ENT:SetupDataTables()
     self:NetworkVar( "Int", "ZFar" )
 
     self:NetworkVar( "String", "CustomLink" )
+    self:NetworkVar( "String", "FalseWorld" )
 
     self:NetworkVar( "Bool", "Inverted" )
     self:NetworkVar( "Bool", "Open" )

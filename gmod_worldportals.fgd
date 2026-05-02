@@ -31,4 +31,5 @@
 	startactive(integer) : "Start Active" : 1 : "Whether to start the linkage as active from the start."
 	DisappearDist(integer)    : "Disappear Distance" : -1 : "Distance at which the portal will stop rendering"
 	EnableTeleport(integer) : "Enable Teleport" : 1 : "Whether to enable the portal teleport"
+	falseworld(string) : "False World" : "" : "Optional registry ID of a wp.falseworlds entry to render in place of an exit portal. Used when no partner is set."
 ]

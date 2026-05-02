@@ -1,2 +1,3 @@
 .tools/
 .claude/settings.local.json
+.claude/*.lock

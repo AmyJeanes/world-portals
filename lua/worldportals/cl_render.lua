@@ -30,10 +30,11 @@ function wp.shouldrender( portal, camOrigin, camAngle, camFOV )
     if not camAngle then camAngle = EyeAngles() end
     if not camFOV then camFOV = LocalPlayer():GetFOV() end
     local exitPortal = portal:GetExit()
+    local falseWorld = portal:GetFalseWorld()
     local distance = camOrigin:Distance( portal:GetPos() )
     local disappearDist = portal:GetDisappearDist()
 
-    if not IsValid( exitPortal ) then return false end
+    if not IsValid( exitPortal ) and not falseWorld then return false end
     
     local override, drawblack = hook.Call( "wp-shouldrender", GAMEMODE, portal, exitPortal, camOrigin )
     if override ~= nil then return override, drawblack end
@@ -79,6 +80,7 @@ hook.Add("InitPostEntity", "WorldPortals_RenderView", function()
     render.RenderView = WorldPortals_RenderView
 end)
 
+
 function wp.renderportals( plyOrigin, plyAngle, width, height, fov )
     if ( wp.drawing ) then return end
     wp.portals = ents.FindByClass( "linked_portal_door" )
@@ -90,69 +92,74 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov )
 
     for _, portal in pairs( wp.portals ) do
         local exitPortal = portal:GetExit()
+        local falseWorld = portal:GetFalseWorld()
         local texture = portal:GetTexture()
-        if IsValid(exitPortal) and wp.shouldrender(portal, plyOrigin, plyAngle, fov) and texture then
-            hook.Call( "wp-prerender", GAMEMODE, portal, exitPortal, plyOrigin )
-            render.PushRenderTarget( texture )
-                render.Clear( 0, 0, 0, 255, true, true )
+        if wp.shouldrender(portal, plyOrigin, plyAngle, fov) and texture then
+            if IsValid(exitPortal) then
+                hook.Call( "wp-prerender", GAMEMODE, portal, exitPortal, plyOrigin )
+                render.PushRenderTarget( texture )
+                    render.Clear( 0, 0, 0, 255, true, true )
 
-                local oldClip = render.EnableClipping( true )
+                    local oldClip = render.EnableClipping( true )
 
-                local exit_forward = exitPortal:GetForward()
-                local exit_ang_offset = exitPortal:GetExitAngOffset()
-                if exit_ang_offset then
-                    exit_forward:Rotate(exit_ang_offset)
-                end
+                    local exit_forward = exitPortal:GetForward()
+                    local exit_ang_offset = exitPortal:GetExitAngOffset()
+                    if exit_ang_offset then
+                        exit_forward:Rotate(exit_ang_offset)
+                    end
 
-                local offset = exitPortal:GetExitPosOffset()
+                    local offset = exitPortal:GetExitPosOffset()
 
-                if IsValid(exitPortal:GetParent()) then
-                    offset:Rotate(exitPortal:GetParent():GetAngles())
-                end
+                    if IsValid(exitPortal:GetParent()) then
+                        offset:Rotate(exitPortal:GetParent():GetAngles())
+                    end
 
-                local exit_pos = exitPortal:GetPos() + offset
+                    local exit_pos = exitPortal:GetPos() + offset
 
-                render.PushCustomClipPlane( exit_forward, exit_forward:Dot( exit_pos - exit_forward * 0.5 ) )
+                    render.PushCustomClipPlane( exit_forward, exit_forward:Dot( exit_pos - exit_forward * 0.5 ) )
 
-                local camOrigin = wp.TransformPortalPos( plyOrigin, portal, exitPortal )
-                local camAngle = wp.TransformPortalAngle( plyAngle, portal, exitPortal )
+                    local camOrigin = wp.TransformPortalPos( plyOrigin, portal, exitPortal )
+                    local camAngle = wp.TransformPortalAngle( plyAngle, portal, exitPortal )
 
-                local zfar = portal:GetZFar()
-                if zfar > 0 then
-                    local relative_pos = plyOrigin - portal:GetPos()
-                    local portal_to_exit_dist = exitPortal:GetPos():Distance(portal:GetPos())
-                    local adjusted_zfar = portal_to_exit_dist + relative_pos:Dot(portal:GetForward())
-                    zfar = math.max(adjusted_zfar, zfar)
-                else
-                    zfar = nil
-                end
+                    local zfar = portal:GetZFar()
+                    if zfar > 0 then
+                        local relative_pos = plyOrigin - portal:GetPos()
+                        local portal_to_exit_dist = exitPortal:GetPos():Distance(portal:GetPos())
+                        local adjusted_zfar = portal_to_exit_dist + relative_pos:Dot(portal:GetForward())
+                        zfar = math.max(adjusted_zfar, zfar)
+                    else
+                        zfar = nil
+                    end
 
-                wp.drawing = true
-                wp.drawingent = portal
-                    render.RenderView( {
-                        x = 0,
-                        y = 0,
-                        w = width,
-                        h = height,
-                        fov = fov,
-                        origin = camOrigin,
-                        angles = camAngle,
-                        dopostprocess = false,
-                        drawhud = false,
-                        drawmonitors = false,
-                        drawviewmodel = false,
-                        bloomtone = true,
-                        viewid = 1, -- VIEW_3DSKY
-                        zfar = zfar
-                    } )
-                wp.drawing = false
-                wp.drawingent = nil
+                    wp.drawing = true
+                    wp.drawingent = portal
+                        render.RenderView( {
+                            x = 0,
+                            y = 0,
+                            w = width,
+                            h = height,
+                            fov = fov,
+                            origin = camOrigin,
+                            angles = camAngle,
+                            dopostprocess = false,
+                            drawhud = false,
+                            drawmonitors = false,
+                            drawviewmodel = false,
+                            bloomtone = true,
+                            viewid = 1, -- VIEW_3DSKY
+                            zfar = zfar
+                        } )
+                    wp.drawing = false
+                    wp.drawingent = nil
 
-                render.PopCustomClipPlane()
-                render.EnableClipping( oldClip )
-            render.PopRenderTarget()
-            
-            hook.Call( "wp-postrender", GAMEMODE, portal, exitPortal, plyOrigin )
+                    render.PopCustomClipPlane()
+                    render.EnableClipping( oldClip )
+                render.PopRenderTarget()
+
+                hook.Call( "wp-postrender", GAMEMODE, portal, exitPortal, plyOrigin )
+            elseif falseWorld then
+                wp.renderfalseworld(texture, portal, plyOrigin, plyAngle, width, height, fov )
+            end
         end
     end
     LocalPlayer():SetWeaponColor( oldWepColor )

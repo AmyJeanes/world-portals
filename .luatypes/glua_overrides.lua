@@ -6,6 +6,7 @@
 
 ---@alias COLLISION_GROUP integer
 ---@alias FORCE integer
+---@alias MATERIAL_FOG integer
 ---@alias STENCILOPERATION integer
 ---@alias STENCILCOMPARISONFUNCTION integer
 
