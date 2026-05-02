@@ -1,10 +1,10 @@
 wp.falseworlds = wp.falseworlds or {}
 
 function wp.addfalseworld( T )
-    if not T.ID then
-        error( "wp.addfalseworld: missing T.ID" )
+    if not T.id then
+        error( "wp.addfalseworld: missing T.id" )
     end
-    wp.falseworlds[T.ID] = table.Copy( T )
+    wp.falseworlds[T.id] = table.Copy( T )
 end
 
 if SERVER then return end

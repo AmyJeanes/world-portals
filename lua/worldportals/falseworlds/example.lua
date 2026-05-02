@@ -1,6 +1,6 @@
 -- Example world for testing and helping people learn how to make them.
 local T = {
-    ID = "example",
+    id = "example",
     origin = Vector( -230, 0, 0 ), -- origin point all positioning will be based on
     baselight = Vector( 0.2, 0.2, 0.2 ), -- base light level
     skybox = { -- use a model as a skybox, useful for space ceilings, though not required
