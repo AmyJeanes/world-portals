@@ -20,9 +20,11 @@ wp.rendermode = false
 
 CreateClientConVar("worldportals_resolution_percentage", "100", true, false, "World Portals - Render resolution percentage for portals", 1, 100)
 CreateClientConVar("worldportals_recurse_depth", "1", true, false, "World Portals - Maximum portal recursion depth", 1, 9)
+CreateClientConVar("worldportals_min_render_area", "100", true, false, "World Portals - Minimum cumulative on-screen pixel area for a recursed portal to render. Higher = more aggressive culling of deep / tiny portals.", 0, 100000)
 
 local resolutionScale = 1
 local recurseDepth = 1
+local minRenderArea = 100
 
 local function ClampPortalResolution(value)
     return math.Clamp((tonumber(value) or 100) / 100, 0.01, 1)
@@ -30,6 +32,10 @@ end
 
 local function ClampRecurseDepth(value)
     return math.Clamp(math.floor(tonumber(value) or 1), 1, 9)
+end
+
+local function ClampMinRenderArea(value)
+    return math.max(0, tonumber(value) or 0)
 end
 
 local function UpdatePortalResolution()
@@ -40,8 +46,13 @@ local function UpdateRecurseDepth()
     recurseDepth = ClampRecurseDepth(GetConVar("worldportals_recurse_depth"):GetString())
 end
 
+local function UpdateMinRenderArea()
+    minRenderArea = ClampMinRenderArea(GetConVar("worldportals_min_render_area"):GetString())
+end
+
 UpdatePortalResolution()
 UpdateRecurseDepth()
+UpdateMinRenderArea()
 
 cvars.AddChangeCallback("worldportals_resolution_percentage", function(convarName, oldValue, newValue)
     resolutionScale = ClampPortalResolution(newValue)
@@ -50,6 +61,14 @@ end)
 cvars.AddChangeCallback("worldportals_recurse_depth", function(convarName, oldValue, newValue)
     recurseDepth = ClampRecurseDepth(newValue)
 end)
+
+cvars.AddChangeCallback("worldportals_min_render_area", function(convarName, oldValue, newValue)
+    minRenderArea = ClampMinRenderArea(newValue)
+end)
+
+function wp.GetMinRenderArea()
+    return minRenderArea
+end
 
 function wp.GetRecurseDepth()
     return recurseDepth
@@ -325,6 +344,10 @@ local function polygonSignedArea(poly)
     return (sum or 0) * 0.5
 end
 
+function wp.PolygonArea(poly)
+    return math.abs(polygonSignedArea(poly))
+end
+
 local function reversePolygon(poly)
     local rev = {}
     for i = #poly, 1, -1 do
@@ -430,7 +453,7 @@ hook.Add("PreRender", "WorldPortals_ResetRenderCount", function()
     end
 end)
 
-function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, parentPoly )
+function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, parentPoly, parentExitPos, parentExitFwd )
     if ( wp.drawing ) then return end
 
     depth = ClampRecurseDepth(depth)
@@ -465,15 +488,36 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
         end
 
         local poly
+        local cumulativePoly
         if wp.shouldrender(portal, plyOrigin, plyAngle, fov) and texture then
-            poly = wp.GetPortalScreenPolygon(portal, plyOrigin, plyAngle, fov, aspect)
-            -- Stencil cull: at depth > 1 the portal must intersect its
-            -- immediate parent's screen polygon, otherwise the parent's
-            -- stencil masks it out entirely.
-            if depth > 1 and parentPoly and not wp.PolygonsIntersectSAT(parentPoly, poly) then
-                poly = nil
-            elseif #poly < 3 then
-                poly = nil
+            -- Exit clip-plane cull: the parent's render pushes a
+            -- PushCustomClipPlane at its exit (normal = exit forward) that
+            -- discards scene fragments behind it. A portal entirely behind
+            -- that plane would render to clipped-out content, so skip it.
+            local clipped = false
+            if depth > 1 and parentExitPos and parentExitFwd then
+                local signedDist = (portal:GetPos() - parentExitPos):Dot(parentExitFwd)
+                if signedDist + portal:BoundingRadius() < -0.5 then
+                    clipped = true
+                end
+            end
+
+            if not clipped then
+                poly = wp.GetPortalScreenPolygon(portal, plyOrigin, plyAngle, fov, aspect)
+                if #poly < 3 then
+                    poly = nil
+                elseif depth > 1 and parentPoly then
+                    -- Stencil cull + visible-area cull, in one polygon
+                    -- intersection. Anything sub-threshold contributes too few
+                    -- pixels to the final image to justify a full RT render.
+                    cumulativePoly = wp.IntersectConvexPolygons(poly, parentPoly)
+                    if #cumulativePoly < 3 or wp.PolygonArea(cumulativePoly) < minRenderArea then
+                        poly = nil
+                        cumulativePoly = nil
+                    end
+                else
+                    cumulativePoly = poly
+                end
             end
         end
 
@@ -517,14 +561,10 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
                     local childDepth = depth + 1
                     local drawPortalsInView = childDepth <= recurseDepth
                     if drawPortalsInView then
-                        -- Pass the cumulative ancestor footprint so deeper
-                        -- portals are culled against every ancestor's stencil,
-                        -- not just the immediate parent's.
-                        local childParent = poly
-                        if depth > 1 and parentPoly then
-                            childParent = wp.IntersectConvexPolygons(poly, parentPoly)
-                        end
-                        wp.renderportals(camOrigin, camAngle, width, height, fov, childDepth, childParent)
+                        -- Cumulative ancestor footprint already computed in
+                        -- the per-portal cull above; deeper portals are
+                        -- culled against every ancestor's stencil chain.
+                        wp.renderportals(camOrigin, camAngle, width, height, fov, childDepth, cumulativePoly, exit_pos, exit_forward)
                     end
 
                     local oldDrawing = wp.drawing

@@ -30,7 +30,8 @@ end
 -- yellow otherwise. We descend into a portal's exit only when it
 -- would actually render, since that mirrors what the renderer does.
 local function drawPortalOverlay(plyOrigin, plyAngles, plyFov, aspect, portals,
-                                 parentPoly, depth, maxDepth, mode)
+                                 parentPoly, depth, maxDepth, mode,
+                                 parentExitPos, parentExitFwd)
     if depth > maxDepth then return end
 
     -- Per-mode visibility flags. Mode 1 also clips visible orange overlays
@@ -44,28 +45,44 @@ local function drawPortalOverlay(plyOrigin, plyAngles, plyFov, aspect, portals,
     end
     local clipOrange = (mode == 1)
 
+    local minArea = wp.GetMinRenderArea()
+
     for _, portal in pairs(portals) do
         if IsValid(portal) then
             local rendered = wp.shouldrender(portal, plyOrigin, plyAngles, plyFov)
+            -- Mirror renderportals' exit clip-plane cull so the overlay
+            -- agrees with what actually gets rendered.
+            if rendered and depth > 1 and parentExitPos and parentExitFwd then
+                local signedDist = (portal:GetPos() - parentExitPos):Dot(parentExitFwd)
+                if signedDist + portal:BoundingRadius() < -0.5 then
+                    rendered = false
+                end
+            end
             -- Top-level always considers culled portals (red); deeper levels
             -- skip portals the current camera doesn't see (inner-cam cull).
             if depth == 1 or rendered then
                 local pts = wp.GetPortalScreenPolygon(portal, plyOrigin, plyAngles, plyFov, aspect)
 
-                local visible, color
+                local visible, color, cumPts
                 if depth == 1 then
                     visible = rendered
+                    cumPts = pts
                     color = rendered and COLOR_RENDERED or COLOR_CULLED
                 else
-                    visible = parentPoly and wp.PolygonsIntersectSAT(parentPoly, pts) or false
+                    if parentPoly and #pts >= 3 then
+                        cumPts = wp.IntersectConvexPolygons(pts, parentPoly)
+                        visible = #cumPts >= 3 and wp.PolygonArea(cumPts) >= minArea
+                    else
+                        visible = false
+                    end
                     color = visible and COLOR_CHILD_VISIBLE or COLOR_CHILD
                 end
 
                 if visible or showCulled then
                     surface.SetDrawColor(color)
                     local drawPts = pts
-                    if visible and depth > 1 and clipOrange and parentPoly then
-                        drawPts = wp.IntersectConvexPolygons(pts, parentPoly)
+                    if visible and depth > 1 and clipOrange and cumPts then
+                        drawPts = cumPts
                     end
                     drawScreenPolygon(drawPts)
                 end
@@ -75,15 +92,20 @@ local function drawPortalOverlay(plyOrigin, plyAngles, plyFov, aspect, portals,
                     if IsValid(exit) then
                         local innerOrigin = wp.TransformPortalPos(plyOrigin, portal, exit)
                         local innerAngles = wp.TransformPortalAngle(plyAngles, portal, exit)
-                        -- Cumulative ancestor footprint: clip this portal's
-                        -- polygon against the existing parent so deeper
-                        -- levels test against every ancestor's stencil.
-                        local childParent = pts
-                        if depth > 1 and parentPoly then
-                            childParent = wp.IntersectConvexPolygons(pts, parentPoly)
+
+                        local exitFwd = exit:GetForward()
+                        local exitAngOffset = exit:GetExitAngOffset()
+                        if exitAngOffset then
+                            exitFwd:Rotate(exitAngOffset)
                         end
+                        local exitOffset = exit:GetExitPosOffset()
+                        if IsValid(exit:GetParent()) then
+                            exitOffset:Rotate(exit:GetParent():GetAngles())
+                        end
+                        local exitPos = exit:GetPos() + exitOffset
+
                         drawPortalOverlay(innerOrigin, innerAngles, plyFov, aspect, portals,
-                            childParent, depth + 1, maxDepth, mode)
+                            cumPts, depth + 1, maxDepth, mode, exitPos, exitFwd)
                     end
                 end
             end
