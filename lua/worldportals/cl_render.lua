@@ -301,6 +301,111 @@ function wp.PolygonsIntersectSAT(a, b)
     return true
 end
 
+local function polygonSignedArea(poly)
+    if #poly < 3 then return 0 end
+    local sum = 0
+    local first, prev
+    for _, p in ipairs(poly) do
+        if prev then
+            sum = sum + (prev.x * p.y - p.x * prev.y)
+        else
+            first = p
+        end
+        prev = p
+    end
+    if first and prev and prev ~= first then
+        sum = sum + (prev.x * first.y - first.x * prev.y)
+    end
+    return (sum or 0) * 0.5
+end
+
+local function reversePolygon(poly)
+    local rev = {}
+    for i = #poly, 1, -1 do
+        rev[#rev + 1] = poly[i]
+    end
+    return rev
+end
+
+-- Sutherland-Hodgman: clip `subject` against directed edge (e1 → e2),
+-- keeping vertices on the half-plane the right normal points into.
+-- Caller is responsible for ensuring the clip edge winding gives a
+-- right-normal-inward orientation.
+local function clipPolygonAgainstEdge(subject, e1, e2)
+    if #subject == 0 then return {} end
+
+    local nx = e2.y - e1.y
+    local ny = -(e2.x - e1.x)
+
+    local function dist(p)
+        return (p.x - e1.x) * nx + (p.y - e1.y) * ny
+    end
+
+    local function intersect(s, sd, e, ed)
+        local t = sd / (sd - ed)
+        return { x = s.x + (e.x - s.x) * t, y = s.y + (e.y - s.y) * t }
+    end
+
+    local function processEdge(out, s, sd, e, ed)
+        if ed >= 0 then
+            if sd < 0 then
+                out[#out + 1] = intersect(s, sd, e, ed)
+            end
+            out[#out + 1] = e
+        elseif sd >= 0 then
+            out[#out + 1] = intersect(s, sd, e, ed)
+        end
+    end
+
+    local out = {}
+    local first, firstD, prev, prevD
+    for _, curr in ipairs(subject) do
+        local currD = dist(curr)
+        if prev then
+            processEdge(out, prev, prevD, curr, currD)
+        else
+            first = curr
+            firstD = currD
+        end
+        prev = curr
+        prevD = currD
+    end
+    if first and prev and prev ~= first then
+        processEdge(out, prev, prevD, first, firstD)
+    end
+    return out
+end
+
+-- Convex-polygon intersection via iterated Sutherland-Hodgman: clip the
+-- subject polygon against every edge of the convex clip polygon. Returns
+-- the (possibly empty) intersection polygon. Polygons projected through
+-- portal-recursed cameras can come out with either winding (paired-portal
+-- basis flips), so canonicalize the clip to the right-normal-inward
+-- orientation that clipPolygonAgainstEdge expects.
+function wp.IntersectConvexPolygons(subject, clip)
+    if #subject == 0 or #clip < 3 then return {} end
+
+    local area = polygonSignedArea(clip)
+    if area == 0 then return {} end
+    if area > 0 then clip = reversePolygon(clip) end
+
+    local result = subject
+    local first, prev
+    for _, e in ipairs(clip) do
+        if prev then
+            result = clipPolygonAgainstEdge(result, prev, e)
+            if #result == 0 then return result end
+        else
+            first = e
+        end
+        prev = e
+    end
+    if first and prev and prev ~= first then
+        result = clipPolygonAgainstEdge(result, prev, first)
+    end
+    return result
+end
+
 local framePortalRenderCount = 0
 local framePortalRenderByDepth = {}
 
@@ -406,7 +511,14 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
                     local childDepth = depth + 1
                     local drawPortalsInView = childDepth <= recurseDepth
                     if drawPortalsInView then
-                        wp.renderportals(camOrigin, camAngle, width, height, fov, childDepth, poly)
+                        -- Pass the cumulative ancestor footprint so deeper
+                        -- portals are culled against every ancestor's stencil,
+                        -- not just the immediate parent's.
+                        local childParent = poly
+                        if depth > 1 and parentPoly then
+                            childParent = wp.IntersectConvexPolygons(poly, parentPoly)
+                        end
+                        wp.renderportals(camOrigin, camAngle, width, height, fov, childDepth, childParent)
                     end
 
                     local oldDrawing = wp.drawing

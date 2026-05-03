@@ -57,8 +57,15 @@ local function drawPortalOverlay(plyOrigin, plyAngles, plyFov, aspect, portals,
                     if IsValid(exit) then
                         local innerOrigin = wp.TransformPortalPos(plyOrigin, portal, exit)
                         local innerAngles = wp.TransformPortalAngle(plyAngles, portal, exit)
+                        -- Cumulative ancestor footprint: clip this portal's
+                        -- polygon against the existing parent so deeper
+                        -- levels test against every ancestor's stencil.
+                        local childParent = pts
+                        if depth > 1 and parentPoly then
+                            childParent = wp.IntersectConvexPolygons(pts, parentPoly)
+                        end
                         drawPortalOverlay(innerOrigin, innerAngles, plyFov, aspect, portals,
-                            pts, depth + 1, maxDepth)
+                            childParent, depth + 1, maxDepth)
                     end
                 end
             end
