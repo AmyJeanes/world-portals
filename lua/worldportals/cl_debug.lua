@@ -98,7 +98,7 @@ local function drawChildOverlays(parent, plyOrigin, plyAngles, plyFov, aspect, p
 
     surface.SetDrawColor(COLOR_CHILD)
     for _, child in pairs(portals) do
-        if IsValid(child) and child ~= parent
+        if IsValid(child)
            and wp.shouldrender(child, innerOrigin, innerAngles, plyFov) then
             drawClippedQuadNDC(child, innerOrigin, innerFwd, innerRight, innerUp, tanHalfH, tanHalfV)
         end
