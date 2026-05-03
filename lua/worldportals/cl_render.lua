@@ -112,7 +112,9 @@ function wp.shouldrender( portal, camOrigin, camAngle, camFOV )
     
     local override, drawblack = hook.Call( "wp-shouldrender", GAMEMODE, portal, exitPortal, camOrigin, camAngle, camFOV, wp.GetPortalRenderDepth() )
     if override ~= nil then return override, drawblack end
-    
+
+    if not portal:GetOpen() then return false end
+
     if portal:IsDormant() then return false end
     
     if not (disappearDist <= 0) and distance > disappearDist then return false end
