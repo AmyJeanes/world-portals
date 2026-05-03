@@ -22,20 +22,46 @@ local function drawScreenPolygon(pts)
     end
 end
 
-local function drawChildOverlays(parent, plyOrigin, plyAngles, plyFov, aspect, portals, parentPts)
-    local exit = parent:GetExit()
-    if not IsValid(exit) then return end
+-- Recursively walk the portal tree, mirroring wp.renderportals' logic. At
+-- depth 1 we draw every portal in the player's view (green if it would
+-- render, red if not). At depth >= 2 we only draw portals the current
+-- camera can see (skipping those wp.shouldrender rejects), colouring
+-- orange when SAT-intersecting the immediate parent's polygon and
+-- yellow otherwise. We descend into a portal's exit only when it
+-- would actually render, since that mirrors what the renderer does.
+local function drawPortalOverlay(plyOrigin, plyAngles, plyFov, aspect, portals,
+                                 parentPoly, depth, maxDepth)
+    if depth > maxDepth then return end
 
-    local innerOrigin = wp.TransformPortalPos(plyOrigin, parent, exit)
-    local innerAngles = wp.TransformPortalAngle(plyAngles, parent, exit)
+    for _, portal in pairs(portals) do
+        if IsValid(portal) then
+            local rendered = wp.shouldrender(portal, plyOrigin, plyAngles, plyFov)
+            -- Top-level draws even when culled (red); deeper levels skip culled.
+            if depth == 1 or rendered then
+                local pts = wp.GetPortalScreenPolygon(portal, plyOrigin, plyAngles, plyFov, aspect)
 
-    for _, child in pairs(portals) do
-        if IsValid(child)
-           and wp.shouldrender(child, innerOrigin, innerAngles, plyFov) then
-            local pts = wp.GetPortalScreenPolygon(child, innerOrigin, innerAngles, plyFov, aspect)
-            local color = wp.PolygonsIntersectSAT(parentPts, pts) and COLOR_CHILD_VISIBLE or COLOR_CHILD
-            surface.SetDrawColor(color)
-            drawScreenPolygon(pts)
+                local visible, color
+                if depth == 1 then
+                    visible = rendered
+                    color = rendered and COLOR_RENDERED or COLOR_CULLED
+                else
+                    visible = parentPoly and wp.PolygonsIntersectSAT(parentPoly, pts) or false
+                    color = visible and COLOR_CHILD_VISIBLE or COLOR_CHILD
+                end
+
+                surface.SetDrawColor(color)
+                drawScreenPolygon(pts)
+
+                if visible and depth + 1 <= maxDepth then
+                    local exit = portal:GetExit()
+                    if IsValid(exit) then
+                        local innerOrigin = wp.TransformPortalPos(plyOrigin, portal, exit)
+                        local innerAngles = wp.TransformPortalAngle(plyAngles, portal, exit)
+                        drawPortalOverlay(innerOrigin, innerAngles, plyFov, aspect, portals,
+                            pts, depth + 1, maxDepth)
+                    end
+                end
+            end
         end
     end
 end
@@ -48,26 +74,15 @@ hook.Add("HUDPaint", "WorldPortals_Debug", function()
     local camFov = LocalPlayer():GetFOV()
     local aspect = ScrW() / ScrH()
     local portals = ents.FindByClass("linked_portal_door")
+    local maxDepth = wp.GetRecurseDepth()
 
-    for _, portal in ipairs(portals) do
-        if IsValid(portal) then
-            local rendered = wp.shouldrender(portal)
-            local pts = wp.GetPortalScreenPolygon(portal, camPos, camAng, camFov, aspect)
-            surface.SetDrawColor(rendered and COLOR_RENDERED or COLOR_CULLED)
-            drawScreenPolygon(pts)
-
-            if rendered then
-                drawChildOverlays(portal, camPos, camAng, camFov, aspect, portals, pts)
-            end
-        end
-    end
+    drawPortalOverlay(camPos, camAng, camFov, aspect, portals, nil, 1, maxDepth)
 
     local SHADOW = Color(0, 0, 0, 220)
     local x = 16
     local lineH = 22
     local total = wp.GetFramePortalRenderCount()
     local byDepth = wp.GetFramePortalRenderByDepth()
-    local maxDepth = wp.GetRecurseDepth()
 
     -- Center the block vertically around screen midline.
     local visibleDepths = 0
