@@ -1,5 +1,5 @@
 
-CreateClientConVar("worldportals_debug", "0", true, false, "World Portals - Debug overlay (0=off, 1=rendered only, 2=rendered + culled)", 0, 2)
+CreateClientConVar("worldportals_debug", "0", true, false, "World Portals - Debug overlay (0=off, 1=clipped to visible, 2=rendered only, 3=all incl. culled)", 0, 3)
 
 local COLOR_RENDERED = Color(0, 255, 0, 220)
 local COLOR_CULLED = Color(255, 60, 60, 220)
@@ -30,8 +30,19 @@ end
 -- yellow otherwise. We descend into a portal's exit only when it
 -- would actually render, since that mirrors what the renderer does.
 local function drawPortalOverlay(plyOrigin, plyAngles, plyFov, aspect, portals,
-                                 parentPoly, depth, maxDepth, showCulled)
+                                 parentPoly, depth, maxDepth, mode)
     if depth > maxDepth then return end
+
+    -- Per-mode visibility flags. Mode 1 also clips visible orange overlays
+    -- to the cumulative ancestor footprint so each one shows just the
+    -- portion the player can actually see through the stencil chain.
+    local showCulled
+    if depth == 1 then
+        showCulled = (mode == 1 or mode == 3)
+    else
+        showCulled = (mode == 3)
+    end
+    local clipOrange = (mode == 1)
 
     for _, portal in pairs(portals) do
         if IsValid(portal) then
@@ -52,7 +63,11 @@ local function drawPortalOverlay(plyOrigin, plyAngles, plyFov, aspect, portals,
 
                 if visible or showCulled then
                     surface.SetDrawColor(color)
-                    drawScreenPolygon(pts)
+                    local drawPts = pts
+                    if visible and depth > 1 and clipOrange and parentPoly then
+                        drawPts = wp.IntersectConvexPolygons(pts, parentPoly)
+                    end
+                    drawScreenPolygon(drawPts)
                 end
 
                 if visible and depth + 1 <= maxDepth then
@@ -68,7 +83,7 @@ local function drawPortalOverlay(plyOrigin, plyAngles, plyFov, aspect, portals,
                             childParent = wp.IntersectConvexPolygons(pts, parentPoly)
                         end
                         drawPortalOverlay(innerOrigin, innerAngles, plyFov, aspect, portals,
-                            childParent, depth + 1, maxDepth, showCulled)
+                            childParent, depth + 1, maxDepth, mode)
                     end
                 end
             end
@@ -87,7 +102,7 @@ hook.Add("HUDPaint", "WorldPortals_Debug", function()
     local portals = ents.FindByClass("linked_portal_door")
     local maxDepth = wp.GetRecurseDepth()
 
-    drawPortalOverlay(camPos, camAng, camFov, aspect, portals, nil, 1, maxDepth, mode >= 2)
+    drawPortalOverlay(camPos, camAng, camFov, aspect, portals, nil, 1, maxDepth, mode)
 
     local SHADOW = Color(0, 0, 0, 220)
     local x = 16
