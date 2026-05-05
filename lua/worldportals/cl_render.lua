@@ -180,13 +180,10 @@ wp.CachePortalScalars = cachePortalScalars
 -- Static scratch buffers for the renderportals hot path. These get mutated
 -- per render but never escape Lua (no engine call retains them after it
 -- returns), so reusing them eliminates the per-render alloc churn.
-local EXIT_POS_BUF = Vector()
 local EXIT_ANG_BUF = Angle()
 local EXIT_ANG_OFF_BUF = Angle()
-local LOCAL_ANG_ZERO = Angle()
 local VECTOR_ORIGIN = Vector()
 local VECTOR_UP = Vector(0, 0, 1)
-local ANGLE_YAW_180 = Angle(0, 180, 0)
 
 -- Per-recursion-depth pool of reusable Vectors/Angles. Each depth's iteration
 -- uses its own slot for camOrigin/camAngle/exitPos/exitFwd, so the recursive
@@ -216,23 +213,57 @@ end
 -- buffers for the intermediate exit-side pose. Original sh_utils versions
 -- allocated ~9-10 Vectors/Angles per call; these allocate ~3 (the unavoidable
 -- WorldToLocal[Angles] result + the LocalToWorld result pair).
+-- Fully scalar TransformPortalPos. GMod convention (verified by probing
+-- WorldToLocal at runtime): local.x = rel·forward, local.y = -(rel·right),
+-- local.z = rel·up. The yaw-180 mirror negates local.x and local.y. The
+-- inverse mapping for LocalToWorld is symmetric: world = portal_pos +
+-- l.x*fwd - l.y*right + l.z*up. With the per-frame entity scalar cache
+-- (cachePortalScalars), the no-exit-angle-offset path is allocation-free
+-- — the engine getter calls (WorldToLocal/LocalToWorld) that originally
+-- allocated 3 Vector/Angle pairs are eliminated.
 local function transformPortalPosInto(out, vec, portal, exit_portal)
-    local l_vec = portal:WorldToLocal(vec)
-    l_vec:Rotate(ANGLE_YAW_180)
+    cachePortalScalars(portal)
     cachePortalScalars(exit_portal)
-    EXIT_POS_BUF.x = exit_portal.WPPosX + exit_portal.WPEPOffX
-    EXIT_POS_BUF.y = exit_portal.WPPosY + exit_portal.WPEPOffY
-    EXIT_POS_BUF.z = exit_portal.WPPosZ + exit_portal.WPEPOffZ
-    EXIT_ANG_BUF.p = exit_portal.WPAngP + exit_portal.WPEAOffP
-    EXIT_ANG_BUF.y = exit_portal.WPAngY + exit_portal.WPEAOffY
-    EXIT_ANG_BUF.r = exit_portal.WPAngR + exit_portal.WPEAOffR
-    -- LocalToWorld returns (Vector, Angle); we want only the position. The
-    -- localAng argument doesn't affect the returned position — pass a
-    -- reused zero angle.
-    local w_pos = LocalToWorld(l_vec, LOCAL_ANG_ZERO, EXIT_POS_BUF, EXIT_ANG_BUF)
-    out.x = w_pos.x
-    out.y = w_pos.y
-    out.z = w_pos.z
+
+    local rx = vec.x - portal.WPPosX
+    local ry = vec.y - portal.WPPosY
+    local rz = vec.z - portal.WPPosZ
+    -- WorldToLocal projection into portal frame.
+    local lx = rx * portal.WPFwdX + ry * portal.WPFwdY + rz * portal.WPFwdZ
+    local ly = -(rx * portal.WPRtX + ry * portal.WPRtY + rz * portal.WPRtZ)
+    local lz = rx * portal.WPUpX + ry * portal.WPUpY + rz * portal.WPUpZ
+    -- Yaw-180 mirror.
+    lx = -lx
+    ly = -ly
+
+    -- Exit basis. The common case is no exit-angle-offset, so the cached
+    -- exit basis is the right one — zero allocs. Otherwise build the
+    -- combined Angle in a static buffer and ask the engine for its basis
+    -- (3 unavoidable allocs in this rarer branch).
+    local efx, efy, efz, erx, ery, erz, eux, euy, euz
+    if exit_portal.WPEAOffP == 0 and exit_portal.WPEAOffY == 0 and exit_portal.WPEAOffR == 0 then
+        efx, efy, efz = exit_portal.WPFwdX, exit_portal.WPFwdY, exit_portal.WPFwdZ
+        erx, ery, erz = exit_portal.WPRtX, exit_portal.WPRtY, exit_portal.WPRtZ
+        eux, euy, euz = exit_portal.WPUpX, exit_portal.WPUpY, exit_portal.WPUpZ
+    else
+        EXIT_ANG_BUF.p = exit_portal.WPAngP + exit_portal.WPEAOffP
+        EXIT_ANG_BUF.y = exit_portal.WPAngY + exit_portal.WPEAOffY
+        EXIT_ANG_BUF.r = exit_portal.WPAngR + exit_portal.WPEAOffR
+        local f = EXIT_ANG_BUF:Forward()
+        local r = EXIT_ANG_BUF:Right()
+        local u = EXIT_ANG_BUF:Up()
+        efx, efy, efz = f.x, f.y, f.z
+        erx, ery, erz = r.x, r.y, r.z
+        eux, euy, euz = u.x, u.y, u.z
+    end
+
+    local epx = exit_portal.WPPosX + exit_portal.WPEPOffX
+    local epy = exit_portal.WPPosY + exit_portal.WPEPOffY
+    local epz = exit_portal.WPPosZ + exit_portal.WPEPOffZ
+
+    out.x = epx + lx * efx - ly * erx + lz * eux
+    out.y = epy + lx * efy - ly * ery + lz * euy
+    out.z = epz + lx * efz - ly * erz + lz * euz
     return out
 end
 wp.TransformPortalPosInto = transformPortalPosInto
@@ -515,36 +546,36 @@ end)
 
 local NEAR_EPS = 1
 
-local function addProjectedPoint(out, x, y, z, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
-    local relX = x - camPos.x
-    local relY = y - camPos.y
-    local relZ = z - camPos.z
-    local d = relX * fwd.x + relY * fwd.y + relZ * fwd.z
-    local ndcX = (relX * right.x + relY * right.y + relZ * right.z) / (d * tanHalfH)
-    local ndcY = (relX * up.x + relY * up.y + relZ * up.z) / (d * tanHalfV)
+local function addProjectedPoint(out, x, y, z, cpx, cpy, cpz, fwdX, fwdY, fwdZ, rightX, rightY, rightZ, upX, upY, upZ, tanHalfH, tanHalfV, sw, sh)
+    local relX = x - cpx
+    local relY = y - cpy
+    local relZ = z - cpz
+    local d = relX * fwdX + relY * fwdY + relZ * fwdZ
+    local ndcX = (relX * rightX + relY * rightY + relZ * rightZ) / (d * tanHalfH)
+    local ndcY = (relX * upX + relY * upY + relZ * upZ) / (d * tanHalfV)
     out[#out + 1] = (ndcX + 1) * 0.5 * sw
     out[#out + 1] = (1 - ndcY) * 0.5 * sh
 end
 
-local function clipAndProjectEdge(out, ax, ay, az, bx, by, bz, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
-    local aRelX = ax - camPos.x
-    local aRelY = ay - camPos.y
-    local aRelZ = az - camPos.z
-    local bRelX = bx - camPos.x
-    local bRelY = by - camPos.y
-    local bRelZ = bz - camPos.z
-    local da = aRelX * fwd.x + aRelY * fwd.y + aRelZ * fwd.z - NEAR_EPS
-    local db = bRelX * fwd.x + bRelY * fwd.y + bRelZ * fwd.z - NEAR_EPS
+local function clipAndProjectEdge(out, ax, ay, az, bx, by, bz, cpx, cpy, cpz, fwdX, fwdY, fwdZ, rightX, rightY, rightZ, upX, upY, upZ, tanHalfH, tanHalfV, sw, sh)
+    local aRelX = ax - cpx
+    local aRelY = ay - cpy
+    local aRelZ = az - cpz
+    local bRelX = bx - cpx
+    local bRelY = by - cpy
+    local bRelZ = bz - cpz
+    local da = aRelX * fwdX + aRelY * fwdY + aRelZ * fwdZ - NEAR_EPS
+    local db = bRelX * fwdX + bRelY * fwdY + bRelZ * fwdZ - NEAR_EPS
 
     if da > 0 then
-        addProjectedPoint(out, ax, ay, az, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
+        addProjectedPoint(out, ax, ay, az, cpx, cpy, cpz, fwdX, fwdY, fwdZ, rightX, rightY, rightZ, upX, upY, upZ, tanHalfH, tanHalfV, sw, sh)
         if db <= 0 then
             local t = da / (da - db)
-            addProjectedPoint(out, ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
+            addProjectedPoint(out, ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t, cpx, cpy, cpz, fwdX, fwdY, fwdZ, rightX, rightY, rightZ, upX, upY, upZ, tanHalfH, tanHalfV, sw, sh)
         end
     elseif db > 0 then
         local t = da / (da - db)
-        addProjectedPoint(out, ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
+        addProjectedPoint(out, ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t, cpx, cpy, cpz, fwdX, fwdY, fwdZ, rightX, rightY, rightZ, upX, upY, upZ, tanHalfH, tanHalfV, sw, sh)
     end
 end
 
@@ -585,10 +616,30 @@ end
 -- tanHalfH / aspect, which is the actual rendered vertical FOV. Don't
 -- apply the 0.75 Hor+ factor here; that conversion is only valid going
 -- from 4:3-reference hfov to vfov.
+-- Single-slot cache for the camera basis: renderportals iterates ~7 portals
+-- per recursion level all sharing the same plyAngle, so the second through
+-- last calls in a level skip the three engine getter allocs and reuse the
+-- last-computed basis. Cache key is the (p, y, r) triple — comparing
+-- numbers avoids the Angle __eq's componentwise userdata path.
+local lastCamP, lastCamY, lastCamR
+local lastCamFwdX, lastCamFwdY, lastCamFwdZ = 0, 0, 0
+local lastCamRtX, lastCamRtY, lastCamRtZ = 0, 0, 0
+local lastCamUpX, lastCamUpY, lastCamUpZ = 0, 0, 0
+
 function wp.GetPortalScreenPolygon(portal, camPos, camAng, camFov, aspect)
-    local fwd = camAng:Forward()
-    local right = camAng:Right()
-    local up = camAng:Up()
+    local cap, cay, car = camAng.p, camAng.y, camAng.r
+    if cap ~= lastCamP or cay ~= lastCamY or car ~= lastCamR then
+        local f = camAng:Forward()
+        local r = camAng:Right()
+        local u = camAng:Up()
+        lastCamFwdX, lastCamFwdY, lastCamFwdZ = f.x, f.y, f.z
+        lastCamRtX, lastCamRtY, lastCamRtZ = r.x, r.y, r.z
+        lastCamUpX, lastCamUpY, lastCamUpZ = u.x, u.y, u.z
+        lastCamP, lastCamY, lastCamR = cap, cay, car
+    end
+    local fwd_x, fwd_y, fwd_z = lastCamFwdX, lastCamFwdY, lastCamFwdZ
+    local right_x, right_y, right_z = lastCamRtX, lastCamRtY, lastCamRtZ
+    local up_x, up_y, up_z = lastCamUpX, lastCamUpY, lastCamUpZ
     local tanHalfH = math.tan(camFov * math.pi / 360)
     local tanHalfV = tanHalfH / aspect
 
@@ -614,10 +665,11 @@ function wp.GetPortalScreenPolygon(portal, camPos, camAng, camFov, aspect)
     local x3, y3, z3 = cx - rx - ux, cy - ry - uy, cz - rz - uz
     local x4, y4, z4 = cx + rx - ux, cy + ry - uy, cz + rz - uz
 
-    clipAndProjectEdge(out, x1, y1, z1, x2, y2, z2, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
-    clipAndProjectEdge(out, x2, y2, z2, x3, y3, z3, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
-    clipAndProjectEdge(out, x3, y3, z3, x4, y4, z4, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
-    clipAndProjectEdge(out, x4, y4, z4, x1, y1, z1, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
+    local cpx, cpy, cpz = camPos.x, camPos.y, camPos.z
+    clipAndProjectEdge(out, x1, y1, z1, x2, y2, z2, cpx, cpy, cpz, fwd_x, fwd_y, fwd_z, right_x, right_y, right_z, up_x, up_y, up_z, tanHalfH, tanHalfV, sw, sh)
+    clipAndProjectEdge(out, x2, y2, z2, x3, y3, z3, cpx, cpy, cpz, fwd_x, fwd_y, fwd_z, right_x, right_y, right_z, up_x, up_y, up_z, tanHalfH, tanHalfV, sw, sh)
+    clipAndProjectEdge(out, x3, y3, z3, x4, y4, z4, cpx, cpy, cpz, fwd_x, fwd_y, fwd_z, right_x, right_y, right_z, up_x, up_y, up_z, tanHalfH, tanHalfV, sw, sh)
+    clipAndProjectEdge(out, x4, y4, z4, x1, y1, z1, cpx, cpy, cpz, fwd_x, fwd_y, fwd_z, right_x, right_y, right_z, up_x, up_y, up_z, tanHalfH, tanHalfV, sw, sh)
 
     return out
 end
