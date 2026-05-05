@@ -17,6 +17,8 @@ wp.matView2 = CreateMaterial("WorldPortals", "Core_DX90", {["$basetexture"] = wp
 wp.portals = {}
 wp.drawing = true --default portals to not draw
 wp.rendermode = false
+local WEAPON_COLOR_OFF = Vector(0, 0, 0)
+local THICK_PORTAL_POS = Vector()
 
 -- Reused across all portal RT renders this frame to avoid allocating a fresh
 -- view struct per render.RenderView call (33+ calls/frame in dual-pair test
@@ -85,7 +87,7 @@ end
 -- than that share a chain key (and reuse one RT) instead of churning a fresh
 -- RT every frame as the player moves.
 local function quantizePos(v)
-    return math.floor(v.x / 4 + 0.5) .. "_" .. math.floor(v.y / 4 + 0.5) .. "_" .. math.floor(v.z / 4 + 0.5)
+    return math.floor(v.x / 4 + 0.5), math.floor(v.y / 4 + 0.5), math.floor(v.z / 4 + 0.5)
 end
 
 -- chainKey identifies which RT a given (depth, camera, portal) maps to.
@@ -96,9 +98,29 @@ end
 -- last-write-wins overwrite between sibling chains).
 local function getChainKey(depth, camPos, portal)
     if depth <= 1 or not camPos then
-        return depth .. ":" .. portal:EntIndex()
+        local key = portal.WPDepth1ChainKey
+        if key then return key end
+        key = depth .. ":" .. portal:EntIndex()
+        portal.WPDepth1ChainKey = key
+        return key
     end
-    return depth .. ":" .. quantizePos(camPos) .. ":" .. portal:EntIndex()
+
+    local qx, qy, qz = quantizePos(camPos)
+    if portal.WPLastChainKeyDepth == depth
+        and portal.WPLastChainKeyQX == qx
+        and portal.WPLastChainKeyQY == qy
+        and portal.WPLastChainKeyQZ == qz
+    then
+        return portal.WPLastChainKey
+    end
+
+    local key = depth .. ":" .. qx .. "_" .. qy .. "_" .. qz .. ":" .. portal:EntIndex()
+    portal.WPLastChainKeyDepth = depth
+    portal.WPLastChainKeyQX = qx
+    portal.WPLastChainKeyQY = qy
+    portal.WPLastChainKeyQZ = qz
+    portal.WPLastChainKey = key
+    return key
 end
 
 -- Pool of RTs shared across all portals for d > 1 renders. The chain-key
@@ -110,6 +132,7 @@ end
 -- bound that allocation. d=1 RTs stay per-portal-stable so portal:SetTexture
 -- (consumed downstream) keeps working across frames.
 local rtPool = {}
+local rtPoolCount = 0
 local rtPoolNextSlot = 0
 local rtPoolMaxSize = 32
 local frameCounter = 0
@@ -125,15 +148,16 @@ local function getPooledRT(chainKey, width, height)
         return entry.rt
     end
     -- Resolution changed for this slot — drop it and reallocate below.
-    if entry then rtPool[chainKey] = nil end
+    if entry then
+        rtPool[chainKey] = nil
+        rtPoolCount = rtPoolCount - 1
+    end
 
-    local count = 0
-    for _ in pairs(rtPool) do count = count + 1 end
-
-    if count < rtPoolMaxSize then
+    if rtPoolCount < rtPoolMaxSize then
         local rt = GetRenderTarget("wp_chain_pool_" .. rtPoolNextSlot, width, height)
         rtPoolNextSlot = rtPoolNextSlot + 1
         rtPool[chainKey] = { rt = rt, lastFrame = frameCounter, width = width, height = height }
+        rtPoolCount = rtPoolCount + 1
         return rt
     end
 
@@ -154,6 +178,7 @@ local function getPooledRT(chainKey, width, height)
     if victim.width ~= width or victim.height ~= height then
         -- Old slot was a different size; we'd have to allocate a new RT
         -- anyway, which defeats pooling. Fall back to skip.
+        rtPoolCount = rtPoolCount - 1
         return nil
     end
     rtPool[chainKey] = { rt = victim.rt, lastFrame = frameCounter, width = width, height = height }
@@ -161,9 +186,7 @@ local function getPooledRT(chainKey, width, height)
 end
 
 function wp.GetPortalPoolStats()
-    local count = 0
-    for _ in pairs(rtPool) do count = count + 1 end
-    return count, rtPoolMaxSize
+    return rtPoolCount, rtPoolMaxSize
 end
 
 ---@return ITexture?
@@ -178,12 +201,15 @@ function wp.GetPortalTexture(portal, width, height, depth, chainKey)
     -- portal:SetTexture is consumed by downstream addons that expect a
     -- consistent texture handle frame-to-frame.
     if depth <= 1 then
-        portal.WPTextures = portal.WPTextures or {}
-        local key = "1:" .. width .. ":" .. height
-        local texture = portal.WPTextures[key]
-        if texture then return texture, width, height end
+        local texture = portal.WPTexture1
+        if texture and portal.WPTexture1Width == width and portal.WPTexture1Height == height then
+            return texture, width, height
+        end
         texture = GetRenderTarget("portal:" .. portal:EntIndex() .. ":d1:" .. width .. ":" .. height, width, height)
-        portal.WPTextures[key] = texture
+        portal.WPTexture1 = texture
+        portal.WPTexture1Width = width
+        portal.WPTexture1Height = height
+        if texture then return texture, width, height end
         return texture, width, height
     end
 
@@ -198,7 +224,15 @@ end
 function wp.GetPortalDrawTexture(portal)
     local depth = wp.drawtexturedepth or 1
     local camPos = wp.vieworigin or EyePos()
-    local chainKey = getChainKey(depth, camPos, portal)
+    local chainKey = portal.WPLastDrawChainDepth == depth and portal.WPLastDrawChainCam == camPos and portal.WPLastDrawChainKey or getChainKey(depth, camPos, portal)
+    if portal.WPLastRenderedChainKey == chainKey
+        and portal.WPLastRenderedDepth == depth
+        and portal.WPLastRenderedWidth
+        and portal.WPLastRenderedHeight
+        and portal.WPLastRenderedTexture
+    then
+        return portal.WPLastRenderedTexture, portal.WPLastRenderedWidth, portal.WPLastRenderedHeight, depth
+    end
     local texture, width, height = wp.GetPortalTexture(portal, wp.viewwidth or ScrW(), wp.viewheight or ScrH(), depth, chainKey)
     return texture, width, height, depth
 end
@@ -210,11 +244,16 @@ end
 -- area-culled at a parent level — without this the Draw would sample
 -- stale or undefined RT content and smear it across the screen).
 local frameRenderedChains = {}
+local frameShouldRenderCache = {}
 
 function wp.IsPortalChainRendered(portal, depth, camPos)
     depth = depth or wp.drawtexturedepth or 1
     camPos = camPos or wp.vieworigin or EyePos()
-    return frameRenderedChains[getChainKey(depth, camPos, portal)] == true
+    local chainKey = getChainKey(depth, camPos, portal)
+    portal.WPLastDrawChainDepth = depth
+    portal.WPLastDrawChainCam = camPos
+    portal.WPLastDrawChainKey = chainKey
+    return frameRenderedChains[chainKey] == true
 end
 
 -- Start drawing the portals
@@ -229,20 +268,28 @@ function wp.shouldrender( portal, camOrigin, camAngle, camFOV )
     if not camAngle then camAngle = EyeAngles() end
     if not camFOV then camFOV = LocalPlayer():GetFOV() end
     local exitPortal = portal:GetExit()
-    local falseWorld = portal:GetFalseWorld()
-    local distance = camOrigin:Distance( portal:GetPos() )
-    local disappearDist = portal:GetDisappearDist()
 
-    if not IsValid( exitPortal ) and not (falseWorld and falseWorld ~= "") then return false end
+    if not IsValid( exitPortal ) then
+        local falseWorld = portal:GetFalseWorld()
+        if not (falseWorld and falseWorld ~= "") then return false end
+    end
     
-    local override, drawblack = hook.Call( "wp-shouldrender", GAMEMODE, portal, exitPortal, camOrigin, camAngle, camFOV, wp.GetPortalRenderDepth() )
+    local renderDepth = wp.GetPortalRenderDepth()
+    local override, drawblack = hook.Call( "wp-shouldrender", GAMEMODE, portal, exitPortal, camOrigin, camAngle, camFOV, renderDepth )
     if override ~= nil then return override, drawblack end
 
     if not portal:GetOpen() then return false end
 
     if portal:IsDormant() then return false end
-    
-    if not (disappearDist <= 0) and distance > disappearDist then return false end
+
+    local disappearDist = portal:GetDisappearDist()
+    if disappearDist > 0 then
+        local portalPos = portal:GetPos()
+        local dx = camOrigin.x - portalPos.x
+        local dy = camOrigin.y - portalPos.y
+        local dz = camOrigin.z - portalPos.z
+        if dx * dx + dy * dy + dz * dz > disappearDist * disappearDist then return false end
+    end
     
     --don't render if the view is behind the portal
     -- Use the thick-portal back-face plane only at the top level (player view)
@@ -251,14 +298,16 @@ function wp.shouldrender( portal, camOrigin, camAngle, camFOV )
     -- At depth>1 the inner camera lands inside the exit portal's thick volume
     -- by construction (paired-portal mirror), and rendering it would create
     -- an infinite recursion bouncing between the pair.
-    local portalPos
+    local portalPos = portal:GetPos()
+    local forward = portal:GetForward()
     local thickness = portal:GetThickness()
-    if thickness > 0 and wp.GetPortalRenderDepth() <= 1 then
-        portalPos = portal:LocalToWorld(Vector(-thickness,0,0))
-    else
-        portalPos = portal:GetPos()
+    if thickness > 0 and renderDepth <= 1 then
+        THICK_PORTAL_POS.x = portalPos.x - forward.x * thickness
+        THICK_PORTAL_POS.y = portalPos.y - forward.y * thickness
+        THICK_PORTAL_POS.z = portalPos.z - forward.z * thickness
+        portalPos = THICK_PORTAL_POS
     end
-    local behind = wp.IsBehind( camOrigin, portalPos, portal:GetForward() )
+    local behind = wp.IsBehind( camOrigin, portalPos, forward )
     if behind then return false end
     local lookingAt = wp.IsLookingAt( portal, portalPos, camOrigin, camAngle, camFOV )
     if not lookingAt then return false end
@@ -312,46 +361,39 @@ hook.Add("InitPostEntity", "WorldPortals_RenderView", function()
 end)
 
 
-local function getPortalCorners(portal)
-    local pos = portal:GetPos()
-    local fwd = portal:GetForward()
-    local right = portal:GetRight()
-    local up = portal:GetUp()
-    local hw = portal:GetWidth() * 0.5
-    local hh = portal:GetHeight() * 0.5
-    -- visible face sits at pos - fwd*5 (matches DrawQuadEasy in entity cl_init.lua)
-    local center = pos - fwd * 5
-    return
-        center + right * hw + up * hh,
-        center - right * hw + up * hh,
-        center - right * hw - up * hh,
-        center + right * hw - up * hh
-end
-
 local NEAR_EPS = 1
 
--- Sutherland-Hodgman clip of a world-space quad against the half-space in
--- front of the camera (signed distance along camFwd > NEAR_EPS). Returns
--- 0..5 world-space points.
-local function clipQuadNearPlane(c1, c2, c3, c4, camPos, camFwd)
-    local pts = {}
-    local function clipEdge(a, b)
-        local da = (a - camPos):Dot(camFwd) - NEAR_EPS
-        local db = (b - camPos):Dot(camFwd) - NEAR_EPS
-        if da > 0 then
-            pts[#pts + 1] = a
-            if db <= 0 then
-                pts[#pts + 1] = a + (b - a) * (da / (da - db))
-            end
-        elseif db > 0 then
-            pts[#pts + 1] = a + (b - a) * (da / (da - db))
+local function addProjectedPoint(out, x, y, z, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
+    local relX = x - camPos.x
+    local relY = y - camPos.y
+    local relZ = z - camPos.z
+    local d = relX * fwd.x + relY * fwd.y + relZ * fwd.z
+    local ndcX = (relX * right.x + relY * right.y + relZ * right.z) / (d * tanHalfH)
+    local ndcY = (relX * up.x + relY * up.y + relZ * up.z) / (d * tanHalfV)
+    out[#out + 1] = (ndcX + 1) * 0.5 * sw
+    out[#out + 1] = (1 - ndcY) * 0.5 * sh
+end
+
+local function clipAndProjectEdge(out, ax, ay, az, bx, by, bz, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
+    local aRelX = ax - camPos.x
+    local aRelY = ay - camPos.y
+    local aRelZ = az - camPos.z
+    local bRelX = bx - camPos.x
+    local bRelY = by - camPos.y
+    local bRelZ = bz - camPos.z
+    local da = aRelX * fwd.x + aRelY * fwd.y + aRelZ * fwd.z - NEAR_EPS
+    local db = bRelX * fwd.x + bRelY * fwd.y + bRelZ * fwd.z - NEAR_EPS
+
+    if da > 0 then
+        addProjectedPoint(out, ax, ay, az, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
+        if db <= 0 then
+            local t = da / (da - db)
+            addProjectedPoint(out, ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
         end
+    elseif db > 0 then
+        local t = da / (da - db)
+        addProjectedPoint(out, ax + (bx - ax) * t, ay + (by - ay) * t, az + (bz - az) * t, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
     end
-    clipEdge(c1, c2)
-    clipEdge(c2, c3)
-    clipEdge(c3, c4)
-    clipEdge(c4, c1)
-    return pts
 end
 
 -- Polygon representation: flat float array {x1, y1, x2, y2, ...}.
@@ -398,20 +440,36 @@ function wp.GetPortalScreenPolygon(portal, camPos, camAng, camFov, aspect)
     local tanHalfH = math.tan(camFov * math.pi / 360)
     local tanHalfV = tanHalfH / aspect
 
-    local c1, c2, c3, c4 = getPortalCorners(portal)
-    local clipped = clipQuadNearPlane(c1, c2, c3, c4, camPos, fwd)
-
     local sw, sh = ScrW(), ScrH()
     local out = acquirePoly()
-    for i = 1, #clipped do
-        local v = clipped[i] --[[@as Vector]]
-        local rel = v - camPos
-        local d = rel:Dot(fwd)
-        local ndcX = rel:Dot(right) / (d * tanHalfH)
-        local ndcY = rel:Dot(up)    / (d * tanHalfV)
-        out[#out + 1] = (ndcX + 1) * 0.5 * sw
-        out[#out + 1] = (1 - ndcY) * 0.5 * sh
-    end
+
+    local pos = portal:GetPos()
+    local portalFwd = portal:GetForward()
+    local portalRight = portal:GetRight()
+    local portalUp = portal:GetUp()
+    local hw = portal:GetWidth() * 0.5
+    local hh = portal:GetHeight() * 0.5
+    -- visible face sits at pos - fwd*5 (matches DrawQuadEasy in entity cl_init.lua)
+    local cx = pos.x - portalFwd.x * 5
+    local cy = pos.y - portalFwd.y * 5
+    local cz = pos.z - portalFwd.z * 5
+    local rx = portalRight.x * hw
+    local ry = portalRight.y * hw
+    local rz = portalRight.z * hw
+    local ux = portalUp.x * hh
+    local uy = portalUp.y * hh
+    local uz = portalUp.z * hh
+
+    local x1, y1, z1 = cx + rx + ux, cy + ry + uy, cz + rz + uz
+    local x2, y2, z2 = cx - rx + ux, cy - ry + uy, cz - rz + uz
+    local x3, y3, z3 = cx - rx - ux, cy - ry - uy, cz - rz - uz
+    local x4, y4, z4 = cx + rx - ux, cy + ry - uy, cz + rz - uz
+
+    clipAndProjectEdge(out, x1, y1, z1, x2, y2, z2, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
+    clipAndProjectEdge(out, x2, y2, z2, x3, y3, z3, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
+    clipAndProjectEdge(out, x3, y3, z3, x4, y4, z4, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
+    clipAndProjectEdge(out, x4, y4, z4, x1, y1, z1, camPos, fwd, right, up, tanHalfH, tanHalfV, sw, sh)
+
     return out
 end
 
@@ -581,6 +639,9 @@ hook.Add("PreRender", "WorldPortals_ResetRenderCount", function()
     for k in pairs(frameRenderedChains) do
         frameRenderedChains[k] = nil
     end
+    for k in pairs(frameShouldRenderCache) do
+        frameShouldRenderCache[k] = nil
+    end
     frameRenderedCount = 0
     frameCulledCount = 0
 end)
@@ -608,13 +669,14 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
     local aspect = width / height
 
     -- Disable phys gun glow and beam
-    local oldWepColor = LocalPlayer():GetWeaponColor()
-    LocalPlayer():SetWeaponColor( Vector( 0, 0, 0 ) )
+    local ply = LocalPlayer()
+    local oldWepColor
+    if depth == 1 then
+        oldWepColor = ply:GetWeaponColor()
+        ply:SetWeaponColor( WEAPON_COLOR_OFF )
+    end
 
-    for _, portal in pairs( portals ) do
-        local exitPortal = portal:GetExit()
-        local falseWorld = portal:GetFalseWorld()
-        local chainKey = getChainKey(depth, plyOrigin, portal)
+    for _, portal in ipairs( portals ) do
 
         -- Only d=1 needs an unconditional texture (for portal:SetTexture, used
         -- by downstream consumers). For d > 1 we defer pool allocation until
@@ -623,7 +685,7 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
         -- the chains that will.
         local texture
         if depth == 1 then
-            texture = wp.GetPortalTexture(portal, width, height, depth, chainKey)
+            texture = wp.GetPortalTexture(portal, width, height, depth)
             portal:SetTexture( texture )
         end
 
@@ -638,10 +700,25 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
         --    nothing of its render would be visible to the player anyway.
         local shouldRender = false
         local poly, cumulativePoly
-        if not frameRenderedChains[chainKey] and wp.shouldrender(portal, plyOrigin, plyAngle, fov) then
+        local chainKey = getChainKey(depth, plyOrigin, portal)
+        local renderable
+        if depth > 1 then
+            renderable = frameShouldRenderCache[chainKey]
+            if renderable == nil then
+                renderable = wp.shouldrender(portal, plyOrigin, plyAngle, fov) and true or false
+                frameShouldRenderCache[chainKey] = renderable
+            end
+        else
+            renderable = wp.shouldrender(portal, plyOrigin, plyAngle, fov) and true or false
+        end
+
+        if renderable and not frameRenderedChains[chainKey] then
             local clipped = false
             if depth > 1 and parentExitPos and parentExitFwd then
-                local signedDist = (portal:GetPos() - parentExitPos):Dot(parentExitFwd)
+                local portalPos = portal:GetPos()
+                local signedDist = (portalPos.x - parentExitPos.x) * parentExitFwd.x
+                    + (portalPos.y - parentExitPos.y) * parentExitFwd.y
+                    + (portalPos.z - parentExitPos.z) * parentExitFwd.z
                 if signedDist + portal:BoundingRadius() < -0.5 then
                     clipped = true
                 end
@@ -703,6 +780,11 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
             framePortalRenderCount = framePortalRenderCount + 1
             framePortalRenderByDepth[depth] = (framePortalRenderByDepth[depth] or 0) + 1
             frameRenderedChains[chainKey] = true
+            portal.WPLastRenderedChainKey = chainKey
+            portal.WPLastRenderedDepth = depth
+            portal.WPLastRenderedWidth = width
+            portal.WPLastRenderedHeight = height
+            portal.WPLastRenderedTexture = texture
 
             -- Record the render for the debug overlay (only when enabled —
             -- the overlay-off case must not pay per-render cost). Reuses
@@ -729,6 +811,7 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
                 frameRenderedCount = frameRenderedCount + 1
             end
 
+            local exitPortal = portal:GetExit()
             if IsValid(exitPortal) then
                 hook.Call( "wp-prerender", GAMEMODE, portal, exitPortal, plyOrigin )
                 render.PushRenderTarget( texture )
@@ -755,9 +838,13 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
 
                     local zfar = portal:GetZFar()
                     if zfar > 0 then
-                        local relative_pos = plyOrigin - portal:GetPos()
-                        local portal_to_exit_dist = exitPortal:GetPos():Distance(portal:GetPos())
-                        local adjusted_zfar = portal_to_exit_dist + relative_pos:Dot(portal:GetForward())
+                        local portalPos = portal:GetPos()
+                        local portal_to_exit_dist = exitPortal:GetPos():Distance(portalPos)
+                        local portalForward = portal:GetForward()
+                        local adjusted_zfar = portal_to_exit_dist
+                            + (plyOrigin.x - portalPos.x) * portalForward.x
+                            + (plyOrigin.y - portalPos.y) * portalForward.y
+                            + (plyOrigin.z - portalPos.z) * portalForward.z
                         zfar = math.max(adjusted_zfar, zfar)
                     else
                         zfar = nil
@@ -804,8 +891,11 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
                 render.PopRenderTarget()
 
                 hook.Call( "wp-postrender", GAMEMODE, portal, exitPortal, plyOrigin )
-            elseif falseWorld and falseWorld ~= "" then
-                wp.renderfalseworld(texture, portal, plyOrigin, plyAngle, width, height, fov )
+            else
+                local falseWorld = portal:GetFalseWorld()
+                if falseWorld and falseWorld ~= "" then
+                    wp.renderfalseworld(texture, portal, plyOrigin, plyAngle, width, height, fov )
+                end
             end
         end
 
@@ -818,7 +908,9 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
             end
         end
     end
-    LocalPlayer():SetWeaponColor( oldWepColor )
+    if depth == 1 and oldWepColor then
+        ply:SetWeaponColor( oldWepColor )
+    end
     wp.renderdepth = oldRenderDepth
 end
 
