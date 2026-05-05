@@ -141,6 +141,117 @@ hook.Add("PreRender", "WorldPortals_AdvanceFrame", function()
     frameCounter = frameCounter + 1
 end)
 
+-- Per-entity per-frame scalar cache. Each portal's pos/forward/right/up are
+-- the same for every render call this frame, but the engine getters
+-- (portal:GetPos, portal:GetForward, ...) each allocate a fresh Vector. In
+-- heavy-recurse scenes these were churning hundreds of Vectors per frame.
+-- Caching as plain numbers on the entity table eliminates the alloc — the
+-- next call this frame just reads scalar fields. Mutated entity poses are
+-- still picked up: WPCacheFrame is reset implicitly when frameCounter
+-- advances. Networked offsets (ExitPosOffset, ExitAngOffset) are cached
+-- here too because they're accessed per render and otherwise allocate.
+local function cachePortalScalars(p)
+    if p.WPCacheFrame == frameCounter then return end
+    local pos = p:GetPos()
+    p.WPPosX, p.WPPosY, p.WPPosZ = pos.x, pos.y, pos.z
+    local fwd = p:GetForward()
+    p.WPFwdX, p.WPFwdY, p.WPFwdZ = fwd.x, fwd.y, fwd.z
+    local rt = p:GetRight()
+    p.WPRtX, p.WPRtY, p.WPRtZ = rt.x, rt.y, rt.z
+    local up = p:GetUp()
+    p.WPUpX, p.WPUpY, p.WPUpZ = up.x, up.y, up.z
+    local ang = p:GetAngles()
+    p.WPAngP, p.WPAngY, p.WPAngR = ang.p, ang.y, ang.r
+    -- Networked offsets. ExitPosOffset is rotated by the parent's angles if
+    -- the portal is parented (Hammer-style relative offsets follow the
+    -- parent). Cache the *post-rotation* scalars so callers don't redo it.
+    local epo = p:GetExitPosOffset()
+    local parent = p:GetParent()
+    if IsValid(parent) then
+        epo:Rotate(parent:GetAngles())
+    end
+    p.WPEPOffX, p.WPEPOffY, p.WPEPOffZ = epo.x, epo.y, epo.z
+    local eao = p:GetExitAngOffset()
+    p.WPEAOffP, p.WPEAOffY, p.WPEAOffR = eao.p, eao.y, eao.r
+    p.WPCacheFrame = frameCounter
+end
+wp.CachePortalScalars = cachePortalScalars
+
+-- Static scratch buffers for the renderportals hot path. These get mutated
+-- per render but never escape Lua (no engine call retains them after it
+-- returns), so reusing them eliminates the per-render alloc churn.
+local EXIT_POS_BUF = Vector()
+local EXIT_ANG_BUF = Angle()
+local EXIT_ANG_OFF_BUF = Angle()
+local LOCAL_ANG_ZERO = Angle()
+local VECTOR_ORIGIN = Vector()
+local VECTOR_UP = Vector(0, 0, 1)
+local ANGLE_YAW_180 = Angle(0, 180, 0)
+
+-- Per-recursion-depth pool of reusable Vectors/Angles. Each depth's iteration
+-- uses its own slot for camOrigin/camAngle/exitPos/exitFwd, so the recursive
+-- call into depth+1 cannot overwrite the parent depth's values mid-render.
+-- These are passed:
+--   (a) to the recursive renderportals call as plyOrigin/plyAngle and
+--       parentExitPos/parentExitFwd
+--   (b) to render.RenderView via rv.origin/rv.angles after the recursion
+--       returns, plus to PushCustomClipPlane for the exit-plane.
+local depthSlots = {}
+local function getDepthSlots(depth)
+    local s = depthSlots[depth]
+    if not s then
+        s = {
+            camOrigin = Vector(),
+            camAngle = Angle(),
+            exitPos = Vector(),
+            exitFwd = Vector(),
+        }
+        depthSlots[depth] = s
+    end
+    return s
+end
+
+-- Allocation-light variants of TransformPortalPos / TransformPortalAngle:
+-- write the result into a caller-provided Vector/Angle and reuse static
+-- buffers for the intermediate exit-side pose. Original sh_utils versions
+-- allocated ~9-10 Vectors/Angles per call; these allocate ~3 (the unavoidable
+-- WorldToLocal[Angles] result + the LocalToWorld result pair).
+local function transformPortalPosInto(out, vec, portal, exit_portal)
+    local l_vec = portal:WorldToLocal(vec)
+    l_vec:Rotate(ANGLE_YAW_180)
+    cachePortalScalars(exit_portal)
+    EXIT_POS_BUF.x = exit_portal.WPPosX + exit_portal.WPEPOffX
+    EXIT_POS_BUF.y = exit_portal.WPPosY + exit_portal.WPEPOffY
+    EXIT_POS_BUF.z = exit_portal.WPPosZ + exit_portal.WPEPOffZ
+    EXIT_ANG_BUF.p = exit_portal.WPAngP + exit_portal.WPEAOffP
+    EXIT_ANG_BUF.y = exit_portal.WPAngY + exit_portal.WPEAOffY
+    EXIT_ANG_BUF.r = exit_portal.WPAngR + exit_portal.WPEAOffR
+    -- LocalToWorld returns (Vector, Angle); we want only the position. The
+    -- localAng argument doesn't affect the returned position — pass a
+    -- reused zero angle.
+    local w_pos = LocalToWorld(l_vec, LOCAL_ANG_ZERO, EXIT_POS_BUF, EXIT_ANG_BUF)
+    out.x = w_pos.x
+    out.y = w_pos.y
+    out.z = w_pos.z
+    return out
+end
+wp.TransformPortalPosInto = transformPortalPosInto
+
+local function transformPortalAngleInto(out, angle, portal, exit_portal)
+    local l_angle = portal:WorldToLocalAngles(angle)
+    l_angle:RotateAroundAxis(VECTOR_UP, 180)
+    cachePortalScalars(exit_portal)
+    EXIT_ANG_BUF.p = exit_portal.WPAngP + exit_portal.WPEAOffP
+    EXIT_ANG_BUF.y = exit_portal.WPAngY + exit_portal.WPEAOffY
+    EXIT_ANG_BUF.r = exit_portal.WPAngR + exit_portal.WPEAOffR
+    local _, w_angle = LocalToWorld(VECTOR_ORIGIN, l_angle, VECTOR_ORIGIN, EXIT_ANG_BUF)
+    out.p = w_angle.p
+    out.y = w_angle.y
+    out.r = w_angle.r
+    return out
+end
+wp.TransformPortalAngleInto = transformPortalAngleInto
+
 local function getPooledRT(chainKey, width, height)
     local entry = rtPool[chainKey]
     if entry and entry.width == width and entry.height == height then
@@ -484,22 +595,19 @@ function wp.GetPortalScreenPolygon(portal, camPos, camAng, camFov, aspect)
     local sw, sh = ScrW(), ScrH()
     local out = acquirePoly()
 
-    local pos = portal:GetPos()
-    local portalFwd = portal:GetForward()
-    local portalRight = portal:GetRight()
-    local portalUp = portal:GetUp()
+    cachePortalScalars(portal)
     local hw = portal:GetWidth() * 0.5
     local hh = portal:GetHeight() * 0.5
     -- visible face sits at pos - fwd*5 (matches DrawQuadEasy in entity cl_init.lua)
-    local cx = pos.x - portalFwd.x * 5
-    local cy = pos.y - portalFwd.y * 5
-    local cz = pos.z - portalFwd.z * 5
-    local rx = portalRight.x * hw
-    local ry = portalRight.y * hw
-    local rz = portalRight.z * hw
-    local ux = portalUp.x * hh
-    local uy = portalUp.y * hh
-    local uz = portalUp.z * hh
+    local cx = portal.WPPosX - portal.WPFwdX * 5
+    local cy = portal.WPPosY - portal.WPFwdY * 5
+    local cz = portal.WPPosZ - portal.WPFwdZ * 5
+    local rx = portal.WPRtX * hw
+    local ry = portal.WPRtY * hw
+    local rz = portal.WPRtZ * hw
+    local ux = portal.WPUpX * hh
+    local uy = portal.WPUpY * hh
+    local uz = portal.WPUpZ * hh
 
     local x1, y1, z1 = cx + rx + ux, cy + ry + uy, cz + rz + uz
     local x2, y2, z2 = cx - rx + ux, cy - ry + uy, cz - rz + uz
@@ -853,32 +961,53 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
 
                     local oldClip = render.EnableClipping( true )
 
-                    local exit_forward = exitPortal:GetForward()
-                    local exit_ang_offset = exitPortal:GetExitAngOffset()
-                    if exit_ang_offset then
-                        exit_forward:Rotate(exit_ang_offset)
+                    -- Cache exit-side scalars once per frame; subsequent reads
+                    -- here are plain table lookups instead of allocating
+                    -- Vector/Angle from the engine each call.
+                    cachePortalScalars(exitPortal)
+                    cachePortalScalars(portal)
+
+                    -- Per-depth scratch buffers so the recursion at line below
+                    -- can read parentExitPos/parentExitFwd from this depth's
+                    -- slot without the child overwriting them.
+                    local slots = getDepthSlots(depth)
+                    local exit_forward = slots.exitFwd
+                    local exit_pos = slots.exitPos
+
+                    exit_forward.x = exitPortal.WPFwdX
+                    exit_forward.y = exitPortal.WPFwdY
+                    exit_forward.z = exitPortal.WPFwdZ
+                    -- Apply the entity's exit-angle offset (rare; usually all
+                    -- zero) by rotating the cached forward via a static Angle
+                    -- buffer — no alloc.
+                    if exitPortal.WPEAOffP ~= 0 or exitPortal.WPEAOffY ~= 0 or exitPortal.WPEAOffR ~= 0 then
+                        EXIT_ANG_OFF_BUF.p = exitPortal.WPEAOffP
+                        EXIT_ANG_OFF_BUF.y = exitPortal.WPEAOffY
+                        EXIT_ANG_OFF_BUF.r = exitPortal.WPEAOffR
+                        exit_forward:Rotate(EXIT_ANG_OFF_BUF)
                     end
 
-                    local offset = exitPortal:GetExitPosOffset()
+                    -- exit_pos = exitPortal:GetPos() + (parent-rotated offset);
+                    -- both are cached as scalars by cachePortalScalars.
+                    exit_pos.x = exitPortal.WPPosX + exitPortal.WPEPOffX
+                    exit_pos.y = exitPortal.WPPosY + exitPortal.WPEPOffY
+                    exit_pos.z = exitPortal.WPPosZ + exitPortal.WPEPOffZ
 
-                    if IsValid(exitPortal:GetParent()) then
-                        offset:Rotate(exitPortal:GetParent():GetAngles())
-                    end
-
-                    local exit_pos = exitPortal:GetPos() + offset
-
-                    local camOrigin = wp.TransformPortalPos( plyOrigin, portal, exitPortal )
-                    local camAngle = wp.TransformPortalAngle( plyAngle, portal, exitPortal )
+                    local camOrigin = slots.camOrigin
+                    local camAngle = slots.camAngle
+                    transformPortalPosInto(camOrigin, plyOrigin, portal, exitPortal)
+                    transformPortalAngleInto(camAngle, plyAngle, portal, exitPortal)
 
                     local zfar = portal:GetZFar()
                     if zfar > 0 then
-                        local portalPos = portal:GetPos()
-                        local portal_to_exit_dist = exitPortal:GetPos():Distance(portalPos)
-                        local portalForward = portal:GetForward()
+                        local pdx = exitPortal.WPPosX - portal.WPPosX
+                        local pdy = exitPortal.WPPosY - portal.WPPosY
+                        local pdz = exitPortal.WPPosZ - portal.WPPosZ
+                        local portal_to_exit_dist = math.sqrt(pdx*pdx + pdy*pdy + pdz*pdz)
                         local adjusted_zfar = portal_to_exit_dist
-                            + (plyOrigin.x - portalPos.x) * portalForward.x
-                            + (plyOrigin.y - portalPos.y) * portalForward.y
-                            + (plyOrigin.z - portalPos.z) * portalForward.z
+                            + (plyOrigin.x - portal.WPPosX) * portal.WPFwdX
+                            + (plyOrigin.y - portal.WPPosY) * portal.WPFwdY
+                            + (plyOrigin.z - portal.WPPosZ) * portal.WPFwdZ
                         zfar = math.max(adjusted_zfar, zfar)
                     else
                         zfar = nil
@@ -912,7 +1041,13 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
                     rv.origin = camOrigin
                     rv.angles = camAngle
                     rv.zfar = zfar
-                    render.PushCustomClipPlane( exit_forward, exit_forward:Dot( exit_pos - exit_forward * 0.5 ) )
+                    -- Scalarised dot: avoids the two Vectors that
+                    -- `exit_pos - exit_forward * 0.5` would allocate.
+                    local efx, efy, efz = exit_forward.x, exit_forward.y, exit_forward.z
+                    local clipD = efx * (exit_pos.x - efx * 0.5)
+                                + efy * (exit_pos.y - efy * 0.5)
+                                + efz * (exit_pos.z - efz * 0.5)
+                    render.PushCustomClipPlane( exit_forward, clipD )
                         render.RenderView( rv )
                     wp.drawing = oldDrawing
                     wp.drawingent = oldDrawingEnt
