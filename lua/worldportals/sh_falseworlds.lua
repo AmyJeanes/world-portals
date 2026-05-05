@@ -84,8 +84,8 @@ function wp.createfalseworld( portal, plyOrigin, plyAngle, width, height, fov )
     cam.End3D()
 end
 
-function wp.renderfalseworld( texture, portal, plyOrigin, plyAngle, width, height, fov )
-    hook.Call( "wp-prerender", GAMEMODE, portal, nil, plyOrigin )
+function wp.renderfalseworld( texture, portal, plyOrigin, plyAngle, width, height, fov, depth )
+    hook.Call( "wp-prerender", GAMEMODE, portal, nil, plyOrigin, depth )
     render.PushRenderTarget( texture )
         local oldW, oldH = ScrW(), ScrH()
         render.Clear( 0, 0, 0, 0, true, true )
@@ -104,5 +104,5 @@ function wp.renderfalseworld( texture, portal, plyOrigin, plyAngle, width, heigh
 
         render.SetViewPort( 0, 0, oldW, oldH )
     render.PopRenderTarget()
-    hook.Call( "wp-postrender", GAMEMODE, portal, nil, plyOrigin )
+    hook.Call( "wp-postrender", GAMEMODE, portal, nil, plyOrigin, depth )
 end

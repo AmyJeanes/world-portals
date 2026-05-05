@@ -98,6 +98,7 @@ When the server teleports the local player and the new angle has nonzero roll, `
 - **For `pairs`/`ipairs` loops, drop the variable you don't use rather than naming it.** `for _, v in pairs(t)` discards the key, `for k in pairs(t)` discards the value, `for _ = 1, n do` for plain N-iteration. The `unused` lint is on so future dead `local x = expensive_call()` survivors get flagged — keep the noise floor at zero by using these forms.
 - When monkey-patching engine globals (`util.TraceLine`, `render.RenderView`), capture the original under a `Real*` alias **once** before reassigning, and reinstall the patch in `InitPostEntity` so addons that load after us don't clobber it.
 - Hooks fired for downstream consumers (`wp-shouldrender`, `wp-trace`, `wp-tracefilter`, `wp-shouldtp`, `wp-teleport`, `wp-allowthickportal`, `wp-predraw`/`postdraw`, `wp-prerender`/`postrender`) all use `hook.Call(name, GAMEMODE, ...)`. Don't change the calling convention without updating consumers (Doors hooks all of these).
+- `wp-prerender` and `wp-postrender` fire as `(portal, exitPortal, plyOrigin, depth)` — the recursion depth (1 = top-level player view, 2+ = nested through-portal renders). Consumers that mutate engine state across the pre/post pair (e.g. cordon's `SetNoDraw` save/restore) MUST guard on `depth > 1` to skip nested renders, or the parent's saved state gets clobbered by a nested pre-render before the parent's post-render restores it.
 
 ## Tooling
 

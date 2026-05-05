@@ -1014,7 +1014,7 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
 
             local exitPortal = portal:GetExit()
             if IsValid(exitPortal) then
-                hook.Call( "wp-prerender", GAMEMODE, portal, exitPortal, plyOrigin )
+                hook.Call( "wp-prerender", GAMEMODE, portal, exitPortal, plyOrigin, depth )
                 render.PushRenderTarget( texture )
                     render.Clear( 0, 0, 0, 255, true, true )
 
@@ -1118,11 +1118,11 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
                     render.EnableClipping( oldClip )
                 render.PopRenderTarget()
 
-                hook.Call( "wp-postrender", GAMEMODE, portal, exitPortal, plyOrigin )
+                hook.Call( "wp-postrender", GAMEMODE, portal, exitPortal, plyOrigin, depth )
             else
                 local falseWorld = portal:GetFalseWorld()
                 if falseWorld and falseWorld ~= "" then
-                    wp.renderfalseworld(texture, portal, plyOrigin, plyAngle, width, height, fov )
+                    wp.renderfalseworld(texture, portal, plyOrigin, plyAngle, width, height, fov, depth )
                 end
             end
         end
