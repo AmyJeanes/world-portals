@@ -64,7 +64,7 @@ function WorldPortals_TraceLine(data)
                 if newFilter == nil then
                     newFilter = hookFilter
                 elseif type(newFilter) == "table" then
-                    newFilter = {table.unpack(newFilter)}
+                    newFilter = {unpack(newFilter)}
                     table.insert(newFilter, hookFilter)
                 elseif type(newFilter) ~= "function" then
                     newFilter = {newFilter, hookFilter}
