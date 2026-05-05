@@ -383,12 +383,36 @@ local function clipQuadNearPlane(c1, c2, c3, c4, camPos, camFwd)
     return pts
 end
 
+-- Polygon representation: flat float array {x1, y1, x2, y2, ...}.
+-- Vertex count is #poly / 2 (or "is empty" via #poly == 0, "has triangle"
+-- via #poly >= 6). Flat layout halves the per-vertex allocation burden
+-- — previously each vertex was its own {x=, y=} table — which dominates
+-- per-frame GC pressure on the debug overlay's recursive walk.
+
+-- Frame-scoped polygon pool: clipping/intersection both produce many
+-- intermediate polygons that all become garbage at end of frame. Hand them
+-- back to the pool instead of letting them churn the GC.
+local polyPool = {}
+local function acquirePoly()
+    local n = #polyPool
+    if n > 0 then
+        local p = polyPool[n] --[[@as number[] ]]
+        polyPool[n] = nil
+        for i = #p, 1, -1 do p[i] = nil end
+        return p
+    end
+    return {}
+end
+local function releasePoly(p)
+    if p then polyPool[#polyPool + 1] = p end
+end
+
 -- Project a portal's visible-face quad through an arbitrary camera into
 -- player-screen pixel space, applying near-plane clipping and Hor+ FOV
 -- scaling. Inner cameras render to screen-aligned RTs sampled at screen
 -- UV, so a feature at inner-NDC (u, v) lands at player-screen NDC (u, v)
 -- — the same conversion works at top level (player camera) and at every
--- recursion depth. Returns a list of 0..5 {x, y} screen-pixel points.
+-- recursion depth. Returns a flat polygon (0, 6, 8, or 10 entries).
 function wp.GetPortalScreenPolygon(portal, camPos, camAng, camFov, aspect)
     local fwd = camAng:Forward()
     local right = camAng:Right()
@@ -402,24 +426,23 @@ function wp.GetPortalScreenPolygon(portal, camPos, camAng, camFov, aspect)
     local clipped = clipQuadNearPlane(c1, c2, c3, c4, camPos, fwd)
 
     local sw, sh = ScrW(), ScrH()
-    local out = {}
-    for _, v in ipairs(clipped) do
+    local out = acquirePoly()
+    for i = 1, #clipped do
+        local v = clipped[i] --[[@as Vector]]
         local rel = v - camPos
         local d = rel:Dot(fwd)
         local ndcX = rel:Dot(right) / (d * tanHalfH)
         local ndcY = rel:Dot(up)    / (d * tanHalfV)
-        out[#out + 1] = {
-            x = (ndcX + 1) * 0.5 * sw,
-            y = (1 - ndcY) * 0.5 * sh,
-        }
+        out[#out + 1] = (ndcX + 1) * 0.5 * sw
+        out[#out + 1] = (1 - ndcY) * 0.5 * sh
     end
     return out
 end
 
 local function projectPolyOntoAxis(pts, ax, ay)
     local mn, mx = math.huge, -math.huge
-    for _, p in ipairs(pts) do
-        local d = p.x * ax + p.y * ay
+    for i = 1, #pts, 2 do
+        local d = pts[i] * ax + pts[i+1] * ay
         if d < mn then mn = d end
         if d > mx then mx = d end
     end
@@ -429,25 +452,17 @@ end
 -- Test each edge of polygon `axes` as a candidate separating axis: project
 -- both polygons onto the edge's normal and report disjoint ranges.
 local function hasSeparatingEdge(axes, other)
-    local function testEdge(p1, p2)
-        local ax = -(p2.y - p1.y)
-        local ay = p2.x - p1.x
+    local n = #axes
+    if n < 6 then return false end
+    local p1x, p1y = axes[n-1], axes[n]
+    for i = 1, n, 2 do
+        local p2x, p2y = axes[i], axes[i+1]
+        local ax = -(p2y - p1y)
+        local ay = p2x - p1x
         local aMin, aMax = projectPolyOntoAxis(axes, ax, ay)
         local bMin, bMax = projectPolyOntoAxis(other, ax, ay)
-        return aMax < bMin or bMax < aMin
-    end
-
-    local first, prev
-    for _, p in ipairs(axes) do
-        if prev then
-            if testEdge(prev, p) then return true end
-        else
-            first = p
-        end
-        prev = p
-    end
-    if first and prev and prev ~= first then
-        if testEdge(prev, first) then return true end
+        if aMax < bMin or bMax < aMin then return true end
+        p1x, p1y = p2x, p2y
     end
     return false
 end
@@ -455,119 +470,125 @@ end
 -- Convex-polygon intersection via Separating Axis Theorem. Both inputs are
 -- assumed convex (which our near-plane-clipped quads always are).
 function wp.PolygonsIntersectSAT(a, b)
-    if #a < 3 or #b < 3 then return false end
+    if #a < 6 or #b < 6 then return false end
     if hasSeparatingEdge(a, b) then return false end
     if hasSeparatingEdge(b, a) then return false end
     return true
 end
 
 local function polygonSignedArea(poly)
-    if #poly < 3 then return 0 end
+    local n = #poly
+    if n < 6 then return 0 end
     local sum = 0
-    local first, prev
-    for _, p in ipairs(poly) do
-        if prev then
-            sum = sum + (prev.x * p.y - p.x * prev.y)
-        else
-            first = p
-        end
-        prev = p
+    local prevX, prevY = poly[n-1], poly[n]
+    for i = 1, n, 2 do
+        local x, y = poly[i], poly[i+1]
+        sum = sum + (prevX * y - x * prevY)
+        prevX, prevY = x, y
     end
-    if first and prev and prev ~= first then
-        sum = sum + (prev.x * first.y - first.x * prev.y)
-    end
-    return (sum or 0) * 0.5
+    return sum * 0.5
 end
 
 function wp.PolygonArea(poly)
     return math.abs(polygonSignedArea(poly))
 end
 
-local function reversePolygon(poly)
-    local rev = {}
-    for i = #poly, 1, -1 do
-        rev[#rev + 1] = poly[i]
+local function reversePolygonInto(src, dst)
+    for i = #dst, 1, -1 do dst[i] = nil end
+    for i = #src - 1, 1, -2 do
+        dst[#dst + 1] = src[i]
+        dst[#dst + 1] = src[i + 1]
     end
-    return rev
+    return dst
 end
 
 -- Sutherland-Hodgman: clip `subject` against directed edge (e1 → e2),
 -- keeping vertices on the half-plane the right normal points into.
 -- Caller is responsible for ensuring the clip edge winding gives a
--- right-normal-inward orientation.
-local function clipPolygonAgainstEdge(subject, e1, e2)
-    if #subject == 0 then return {} end
+-- right-normal-inward orientation. Result written into `out` (cleared
+-- first), so callers can swap two reusable polygon buffers across edges.
+local function clipPolygonAgainstEdge(subject, e1x, e1y, e2x, e2y, out)
+    for i = #out, 1, -1 do out[i] = nil end
+    local n = #subject
+    if n == 0 then return out end
 
-    local nx = e2.y - e1.y
-    local ny = -(e2.x - e1.x)
+    local nx = e2y - e1y
+    local ny = -(e2x - e1x)
 
-    local function dist(p)
-        return (p.x - e1.x) * nx + (p.y - e1.y) * ny
-    end
-
-    local function intersect(s, sd, e, ed)
-        local t = sd / (sd - ed)
-        return { x = s.x + (e.x - s.x) * t, y = s.y + (e.y - s.y) * t }
-    end
-
-    local function processEdge(out, s, sd, e, ed)
-        if ed >= 0 then
-            if sd < 0 then
-                out[#out + 1] = intersect(s, sd, e, ed)
+    local prevX, prevY = subject[n-1], subject[n]
+    local prevD = (prevX - e1x) * nx + (prevY - e1y) * ny
+    for i = 1, n, 2 do
+        local currX, currY = subject[i], subject[i+1]
+        local currD = (currX - e1x) * nx + (currY - e1y) * ny
+        if currD >= 0 then
+            if prevD < 0 then
+                local t = prevD / (prevD - currD)
+                out[#out + 1] = prevX + (currX - prevX) * t
+                out[#out + 1] = prevY + (currY - prevY) * t
             end
-            out[#out + 1] = e
-        elseif sd >= 0 then
-            out[#out + 1] = intersect(s, sd, e, ed)
+            out[#out + 1] = currX
+            out[#out + 1] = currY
+        elseif prevD >= 0 then
+            local t = prevD / (prevD - currD)
+            out[#out + 1] = prevX + (currX - prevX) * t
+            out[#out + 1] = prevY + (currY - prevY) * t
         end
-    end
-
-    local out = {}
-    local first, firstD, prev, prevD
-    for _, curr in ipairs(subject) do
-        local currD = dist(curr)
-        if prev then
-            processEdge(out, prev, prevD, curr, currD)
-        else
-            first = curr
-            firstD = currD
-        end
-        prev = curr
-        prevD = currD
-    end
-    if first and prev and prev ~= first then
-        processEdge(out, prev, prevD, first, firstD)
+        prevX, prevY, prevD = currX, currY, currD
     end
     return out
 end
 
 -- Convex-polygon intersection via iterated Sutherland-Hodgman: clip the
 -- subject polygon against every edge of the convex clip polygon. Returns
--- the (possibly empty) intersection polygon. Polygons projected through
--- portal-recursed cameras can come out with either winding (paired-portal
--- basis flips), so canonicalize the clip to the right-normal-inward
--- orientation that clipPolygonAgainstEdge expects.
+-- the (possibly empty) intersection polygon — a freshly-acquired pool
+-- buffer, so callers should `releasePoly` it when done. Polygons projected
+-- through portal-recursed cameras can come out with either winding
+-- (paired-portal basis flips), so canonicalize the clip to the
+-- right-normal-inward orientation that clipPolygonAgainstEdge expects.
 function wp.IntersectConvexPolygons(subject, clip)
-    if #subject == 0 or #clip < 3 then return {} end
+    local result = acquirePoly()
+    if #subject == 0 or #clip < 6 then return result end
 
     local area = polygonSignedArea(clip)
-    if area == 0 then return {} end
-    if area > 0 then clip = reversePolygon(clip) end
+    if area == 0 then return result end
+    local clipBuf
+    if area > 0 then
+        clipBuf = acquirePoly()
+        clip = reversePolygonInto(clip, clipBuf)
+    end
 
-    local result = subject
-    local first, prev
-    for _, e in ipairs(clip) do
-        if prev then
-            result = clipPolygonAgainstEdge(result, prev, e)
-            if #result == 0 then return result end
-        else
-            first = e
-        end
-        prev = e
+    -- Two reusable buffers ping-ponged across edges so the per-edge clip
+    -- doesn't allocate a fresh polygon table per iteration.
+    local bufA = acquirePoly()
+    for i = 1, #subject do bufA[i] = subject[i] end
+    local bufB = acquirePoly()
+
+    local n = #clip
+    local prevX, prevY = clip[n-1], clip[n]
+    local current = bufA
+    local other = bufB
+    for i = 1, n, 2 do
+        local cx, cy = clip[i], clip[i+1]
+        clipPolygonAgainstEdge(current, prevX, prevY, cx, cy, other)
+        local tmp = current
+        current = other
+        other = tmp
+        if #current == 0 then break end
+        prevX, prevY = cx, cy
     end
-    if first and prev and prev ~= first then
-        result = clipPolygonAgainstEdge(result, prev, first)
-    end
+
+    -- Copy the final result so the two scratch buffers can be returned to
+    -- the pool independently of the result's lifetime.
+    for i = 1, #current do result[i] = current[i] end
+    releasePoly(bufA)
+    releasePoly(bufB)
+    if clipBuf then releasePoly(clipBuf) end
     return result
+end
+
+-- Hand a polygon back to the per-frame pool.
+function wp.ReleasePoly(p)
+    releasePoly(p)
 end
 
 local framePortalRenderCount = 0
@@ -659,11 +680,14 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
                     -- polygon also threads as parentPoly to children so deeper
                     -- portals can be culled against the cumulative footprint.
                     poly = wp.GetPortalScreenPolygon(portal, plyOrigin, plyAngle, fov, aspect)
-                    if #poly < 3 then
+                    if #poly < 6 then
+                        wp.ReleasePoly(poly)
                         poly = nil
                     elseif depth > 1 and parentPoly then
                         cumulativePoly = wp.IntersectConvexPolygons(poly, parentPoly)
-                        if #cumulativePoly < 3 or wp.PolygonArea(cumulativePoly) < minRenderArea then
+                        if #cumulativePoly < 6 or wp.PolygonArea(cumulativePoly) < minRenderArea then
+                            wp.ReleasePoly(poly)
+                            wp.ReleasePoly(cumulativePoly)
                             poly = nil
                             cumulativePoly = nil
                         end
@@ -773,6 +797,16 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
                 hook.Call( "wp-postrender", GAMEMODE, portal, exitPortal, plyOrigin )
             elseif falseWorld and falseWorld ~= "" then
                 wp.renderfalseworld(texture, portal, plyOrigin, plyAngle, renderWidth, renderHeight, fov )
+            end
+        end
+
+        -- Recursive renderportals call has returned; the parent-poly we
+        -- handed it is no longer referenced. Return our owned pool buffers,
+        -- but never the static POLY_SKIP_SENTINEL (it's reused every frame).
+        if poly and poly ~= POLY_SKIP_SENTINEL then
+            wp.ReleasePoly(poly)
+            if cumulativePoly and cumulativePoly ~= poly then
+                wp.ReleasePoly(cumulativePoly)
             end
         end
     end

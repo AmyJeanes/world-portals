@@ -6,19 +6,15 @@ local COLOR_CULLED = Color(255, 60, 60, 220)
 local COLOR_CHILD = Color(255, 220, 0, 220)
 local COLOR_CHILD_VISIBLE = Color(255, 140, 0, 220)
 
+-- Polygon is a flat array {x1, y1, x2, y2, ...}.
 local function drawScreenPolygon(pts)
-    if #pts < 2 then return end
-    local first, prev
-    for _, p in ipairs(pts) do
-        if prev then
-            surface.DrawLine(prev.x, prev.y, p.x, p.y)
-        else
-            first = p
-        end
-        prev = p
-    end
-    if first and prev and prev ~= first then
-        surface.DrawLine(prev.x, prev.y, first.x, first.y)
+    local n = #pts
+    if n < 4 then return end
+    local prevX, prevY = pts[n-1], pts[n]
+    for i = 1, n, 2 do
+        local x, y = pts[i], pts[i+1]
+        surface.DrawLine(prevX, prevY, x, y)
+        prevX, prevY = x, y
     end
 end
 
@@ -63,15 +59,21 @@ local function drawPortalOverlay(plyOrigin, plyAngles, plyFov, aspect, portals,
             if depth == 1 or rendered then
                 local pts = wp.GetPortalScreenPolygon(portal, plyOrigin, plyAngles, plyFov, aspect)
 
-                local visible, color, cumPts
+                local visible, color, cumPts, ownsCum
                 if depth == 1 then
                     visible = rendered
                     cumPts = pts
                     color = rendered and COLOR_RENDERED or COLOR_CULLED
                 else
-                    if parentPoly and #pts >= 3 then
+                    if parentPoly and #pts >= 6 then
                         cumPts = wp.IntersectConvexPolygons(pts, parentPoly)
-                        visible = #cumPts >= 3 and wp.PolygonArea(cumPts) >= minArea
+                        ownsCum = true
+                        -- Geometric overlap with the cumulative ancestor
+                        -- footprint is the visibility test even at minArea==0
+                        -- — a portal that doesn't overlap the ancestor stencil
+                        -- chain isn't visible through it regardless of how
+                        -- big its on-screen quad is.
+                        visible = #cumPts >= 6 and wp.PolygonArea(cumPts) >= minArea
                     else
                         visible = false
                     end
@@ -108,6 +110,9 @@ local function drawPortalOverlay(plyOrigin, plyAngles, plyFov, aspect, portals,
                             cumPts, depth + 1, maxDepth, mode, exitPos, exitFwd)
                     end
                 end
+
+                if ownsCum and cumPts ~= pts then wp.ReleasePoly(cumPts) end
+                wp.ReleasePoly(pts)
             end
         end
     end
