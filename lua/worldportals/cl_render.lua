@@ -12,7 +12,7 @@ wp.matView = CreateMaterial(
         [ "$vertexalpha" ] = "1",
     }
 )
-wp.matView2 = CreateMaterial("WorldPortals", "Core_DX90", {["$basetexture"] = wp.matBlack:GetName(), ["$model"] = "1"})
+wp.matView2 = CreateMaterial("WorldPortals", "Core_DX90", {["$basetexture"] = wp.matBlack:GetName(), ["$model"] = "1", ["$nocull"] = "1"})
 
 wp.portals = {}
 wp.drawing = true --default portals to not draw

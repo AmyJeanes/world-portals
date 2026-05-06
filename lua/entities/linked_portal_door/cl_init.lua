@@ -3,23 +3,19 @@ include( "shared.lua" )
 
 AccessorFunc( ENT, "texture", "Texture" )
 
--- matView2 (no stencil) callers pass color=white so the bound texture shows
--- through, and solid=true so inverted thick portals close their front face
--- instead of leaking world geometry through the 5-quads silhouette.
-function ENT:DrawPortal(exitPortal, color, solid)
-    color = color or color_black
+function ENT:DrawPortal(exitPortal)
     if not (self:GetModel() == "models/error.mdl") then
         render.ModelMaterialOverride( wp.matInvis )
         render.Model({model = self:GetModel(), pos = self:LocalToWorld(self:GetModelPos()), angle = self:LocalToWorldAngles(self:GetModelAng())})
         render.ModelMaterialOverride( nil )
     elseif self:GetThickness() == 0 or hook.Call("wp-allowthickportal", GAMEMODE, self, exitPortal)==false then
-        render.DrawQuadEasy( self:GetPos() -( self:GetForward() * 5 ), self:GetForward(), self:GetWidth(), self:GetHeight(), color, self:GetAngles().roll )
-    elseif self:GetInverted() and not solid then
+        render.DrawQuadEasy( self:GetPos() -( self:GetForward() * 5 ), self:GetForward(), self:GetWidth(), self:GetHeight(), color_black, self:GetAngles().roll )
+    elseif self:GetInverted() then
         for _,quad in ipairs(self.RenderQuads) do
-            render.DrawQuad(self:LocalToWorld(quad[1]), self:LocalToWorld(quad[2]), self:LocalToWorld(quad[3]), self:LocalToWorld(quad[4]), color)
+            render.DrawQuad(self:LocalToWorld(quad[1]), self:LocalToWorld(quad[2]), self:LocalToWorld(quad[3]), self:LocalToWorld(quad[4]), color_black)
         end
     else
-        render.DrawBox(self:GetPos(), self:GetAngles(), self.RenderMin, self.RenderMax, color)
+        render.DrawBox(self:GetPos(), self:GetAngles(), self.RenderMin, self.RenderMax, color_black)
     end
 end
 
@@ -53,8 +49,7 @@ function ENT:Draw()
         else
             render.SetMaterial( wp.matBlack )
         end
-        -- See DrawPortal: matView2 needs solid=true and color=white to show the texture.
-        self:DrawPortal(exitPortal, shouldrender and color_white or color_black, true)
+        self:DrawPortal(exitPortal)
     else
         if shouldrender then
             render.ClearStencil()
