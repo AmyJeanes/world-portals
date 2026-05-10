@@ -1,20 +1,95 @@
 
--- View roll fade after a portal that introduced roll. wp.rotating is set
--- locally from the predicted teleport in sh_teleport.lua (no net round-trip).
-hook.Add("CalcView", "WorldPortals_RotateView", function(ply,pos,ang,fov)
-    if wp.rotating then
-        if wp.rotating ~= 0 then
-            wp.rotating = math.Approach(wp.rotating,0,FrameTime()*((0.5+math.abs(wp.rotating))*3.5))
-            local view={
-                origin=pos,
-                angles=Angle(ang.p,ang.y,wp.rotating),
-                fov=fov
-            }
-            return view
-        else
-            wp.rotating=nil
+-- Predict-lerp window: while armed (sh_teleport.lua sets wp.predictedPos /
+-- wp.predictedAt / wp.predictedOldPos on a successful local prediction), the
+-- engine's snapshot interp can pull ply:GetPos() through wild intermediate
+-- values for a few frames after a teleport (observed: snap to newPos →
+-- drift back partway → drift forward again → settle). The user sees this
+-- as 1-2 frames of "wrong place" rendering — sky, blank, or weird angle.
+--
+-- The shift uses `delta = NetworkOrigin - GetPos`. NetworkOrigin tracks the
+-- *server's authoritative position* of the player, which on listen-server
+-- (and in steady state on real clients) is at the post-teleport pos plus
+-- accumulated movement — exactly where we want the camera. While the engine
+-- drifts GetPos around, NetOrigin stays put at the right spot, so adding
+-- (NetOrigin - GetPos) to the view origin parks the camera at NetOrigin.
+--
+-- Sanity guard: if NetOrigin is *closer to oldPos than to predictedPos*,
+-- the post-teleport snapshot hasn't arrived yet and applying the shift
+-- would yank the camera *backward* to oldPos. In that case we skip the
+-- shift and let the camera render from GetPos (which, having just been
+-- snapped by ply:SetPos, is at newPos — correct without our help).
+--
+-- Disarm: pure timeout. Convergence-detection was tried and failed —
+-- engine drift is non-monotonic, so |delta|<threshold fires too early
+-- and the shift vanishes before the next drift wave. The shift is
+-- naturally a no-op once GetPos catches up to NetOrigin (delta → 0),
+-- so a generous timeout is harmless.
+--
+-- We use SysTime() rather than CurTime() for the timestamp because CurTime()
+-- inside SetupMove is the predicted-tick time (advanced into the future);
+-- comparing against a real-time CurTime() in CalcView yields negative ages.
+local PREDICT_TIMEOUT = 0.5
+
+-- Stats so we can verify the arm/disarm branch fires at all from the HUD.
+wp.predictArmCount = wp.predictArmCount or 0
+wp.predictDisarmReasons = wp.predictDisarmReasons or {timeout=0, sanityFail=0}
+
+local function getPredictDelta(ply)
+    if not wp.predictedPos then return end
+    if SysTime() - (wp.predictedAt or 0) > PREDICT_TIMEOUT then
+        wp.predictedPos = nil
+        wp.predictedAt = nil
+        wp.predictedOldPos = nil
+        wp.predictDisarmReasons.timeout = wp.predictDisarmReasons.timeout + 1
+        return
+    end
+    local netPos = ply:GetNetworkOrigin()
+    -- Sanity: NetOrigin should be near predictedPos. If it's still at the
+    -- pre-teleport pos (snapshot hasn't caught up), don't shift — would
+    -- pull camera backward.
+    if wp.predictedOldPos then
+        local distToNew = (netPos - wp.predictedPos):LengthSqr()
+        local distToOld = (netPos - wp.predictedOldPos):LengthSqr()
+        if distToOld < distToNew then
+            wp.predictSanityFailed = true
+            return  -- skip shift this frame, NetOrigin stale
         end
     end
+    wp.predictSanityFailed = nil
+    return netPos - ply:GetPos()
+end
+
+-- View roll fade after a portal that introduced roll. wp.rotating is set
+-- locally from the predicted teleport in sh_teleport.lua (no net round-trip).
+hook.Add("CalcView", "WorldPortals_View", function(ply, pos, ang, fov)
+    local delta = getPredictDelta(ply)
+    local newOrigin = delta and (pos + delta) or nil
+    local newAngles
+    if wp.rotating then
+        if wp.rotating ~= 0 then
+            wp.rotating = math.Approach(wp.rotating, 0, FrameTime() * ((0.5 + math.abs(wp.rotating)) * 3.5))
+            newAngles = Angle(ang.p, ang.y, wp.rotating)
+        else
+            wp.rotating = nil
+        end
+    end
+    if newOrigin or newAngles then
+        return {
+            origin = newOrigin or pos,
+            angles = newAngles or ang,
+            fov = fov,
+        }
+    end
+end)
+
+-- Same delta for the viewmodel so the physgun/hands ride with the camera —
+-- without this the previous CalcView-only attempt detached them from the
+-- camera ("out of body" physgun) because viewmodel pos is computed from
+-- ply:EyePos() which still tracks the lerping AbsOrigin.
+hook.Add("CalcViewModelView", "WorldPortals_ViewModel", function(weapon, vm, oldPos, oldAng, pos, ang)
+    local delta = getPredictDelta(LocalPlayer())
+    if not delta then return end
+    return pos + delta, ang
 end)
 
 -- Predicted teleport debug HUD. Toggle with `worldportals_debug_predict 1`.
@@ -85,10 +160,35 @@ hook.Add("HUDPaint", "WorldPortals_DebugPredictHUD", function()
     local eye = ply:EyePos()
     local ang = ply:EyeAngles()
     local vel = ply:GetVelocity()
-    line(string.format("Pos:    %8.2f, %8.2f, %8.2f", pos.x, pos.y, pos.z))
-    line(string.format("EyePos: %8.2f, %8.2f, %8.2f", eye.x, eye.y, eye.z))
-    line(string.format("EyeAng: p=%6.1f y=%6.1f r=%6.1f", ang.p, ang.y, ang.r))
-    line(string.format("Vel:    %7.1f, %7.1f, %7.1f  (len=%6.1f)", vel.x, vel.y, vel.z, vel:Length()))
+    local netPos = ply:GetNetworkOrigin()
+    line(string.format("Pos:       %8.2f, %8.2f, %8.2f", pos.x, pos.y, pos.z))
+    line(string.format("NetOrigin: %8.2f, %8.2f, %8.2f  (Pos-Net=%6.1f)", netPos.x, netPos.y, netPos.z, (pos - netPos):Length()))
+    line(string.format("EyePos:    %8.2f, %8.2f, %8.2f", eye.x, eye.y, eye.z))
+    line(string.format("EyeAng:    p=%6.1f y=%6.1f r=%6.1f", ang.p, ang.y, ang.r))
+    line(string.format("Vel:       %7.1f, %7.1f, %7.1f  (len=%6.1f)", vel.x, vel.y, vel.z, vel:Length()))
+
+    line(string.format("Predict stats: arms=%d disarms{timeout=%d}",
+        wp.predictArmCount or 0,
+        (wp.predictDisarmReasons or {}).timeout or 0),
+        Color(180, 180, 255))
+
+    if wp.predictedPos then
+        local age = SysTime() - (wp.predictedAt or 0)
+        local dNet = netPos - pos
+        local dPred = wp.predictedPos - pos
+        local sanityState = wp.predictSanityFailed and "SANITY-FAIL (NetOrigin stale)" or "OK"
+        line(string.format("Predict-lerp: ARMED  tgt=%.1f,%.1f,%.1f  age=%.4fs",
+            wp.predictedPos.x, wp.predictedPos.y, wp.predictedPos.z, age),
+            Color(120, 255, 180))
+        line(string.format("  shift = NetOrigin - Pos = %.1f,%.1f,%.1f  (|=%.1f)",
+            dNet.x, dNet.y, dNet.z, dNet:Length()),
+            Color(120, 255, 180))
+        line(string.format("  predictedPos - Pos = %.1f,%.1f,%.1f  (|=%.1f)  sanity=%s",
+            dPred.x, dPred.y, dPred.z, dPred:Length(), sanityState),
+            Color(120, 255, 180))
+    else
+        line("Predict-lerp: NOT ARMED (wp.predictedPos = nil)", Color(200, 140, 140))
+    end
 
     -- Nearest portal being approached.
     local nearestPortal, nearestDist

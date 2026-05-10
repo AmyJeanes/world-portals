@@ -112,6 +112,24 @@ local function predictPlayerTeleport(ply, mv, cmd)
             if newAng.r ~= 0 then
                 wp.rotating = newAng.r
             end
+            -- Arm the predict-lerp shift window. ply:SetPos snaps the entity
+            -- but the engine still lerps AbsOrigin from the pre-teleport
+            -- snapshot for ~RTT until a snapshot captured after the server
+            -- ran SetupMove arrives. CalcView/CalcViewModelView in
+            -- cl_teleport.lua shift the camera + viewmodel by
+            -- (NetworkOrigin - GetPos) each frame during this window so the
+            -- scene renders from where the server thinks the player is
+            -- (eye-in-renderbounds works, no blank-sky frame). Disarms on
+            -- convergence or timeout. Local playermodel is left to lerp —
+            -- SetRenderOrigin is a no-op for the local player and the model
+            -- isn't visible to ourselves in first-person anyway.
+            -- SysTime, not CurTime: CurTime inside SetupMove is the
+            -- predicted-tick time (advanced into the future), so comparing
+            -- against CurTime in CalcView yields negative ages.
+            wp.predictedPos = newPos
+            wp.predictedOldPos = origin  -- pre-teleport pos, used by getPredictDelta sanity check
+            wp.predictedAt = SysTime()
+            wp.predictArmCount = (wp.predictArmCount or 0) + 1
             hook.Call("wp-teleport", GAMEMODE, portal, ply, newPos, newAng)
             if wp.RecordTeleportEvent then
                 wp.RecordTeleportEvent(portal, origin, newPos, oldEyeAng, clampedAng, oldVel, newVel)
