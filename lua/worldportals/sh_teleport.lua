@@ -75,19 +75,40 @@ local function predictPlayerTeleport(ply, mv, cmd)
         -- backward through a portal mangles your motion direction" because
         -- backward input * old view ≠ backward input * new view.
         mv:SetAngles(clampedAng)
-        -- ply:SetEyeAngles is what actually rotates the camera; cmd:SetViewAngles
-        -- alone only mutates the input cmd struct, leaving the eye angles on
-        -- their last-input value (so directional portals appeared to no-op).
-        ply:SetEyeAngles(clampedAng)
         cmd:SetViewAngles(clampedAng)
-        -- mv:SetOrigin updates the move buffer but not the entity's AbsOrigin
-        -- interpolation pipeline, so for a few frames after teleport
-        -- ply:GetPos() lerps from old to new (visible as a position slide).
-        -- ply:SetPos snaps the entity (same path the broadcast SetPos hits
-        -- for remote clients) and resets the interp cache. Skipped during
-        -- resimulation so we don't repeatedly snap to the same value.
+        -- ply:SetPos resets the AbsOrigin interp cache that mv:SetOrigin
+        -- doesn't touch. Server runs it for authoritative position; client
+        -- runs it on first-time-predicted only (resim would re-snap to the
+        -- same value).
         if SERVER or IsFirstTimePredicted() then
             ply:SetPos(newPos)
+        end
+        -- ply:SetEyeAngles is client-only-first-time-predicted by design:
+        --
+        -- Why client: cmd:SetViewAngles alone leaves the player's persistent
+        -- eye-angle field on its last-input value (so directional portals
+        -- appear to no-op without this). The local SetEyeAngles is what
+        -- actually rotates the camera to clampedAng for the teleport.
+        --
+        -- Why first-time only: during the predict window the teleport command
+        -- resimulates on every client tick. SetEyeAngles writes a persistent
+        -- field that survives resim, so an unconditional call would clobber
+        -- any mouse delta the user has accumulated since — the camera would
+        -- "snap back" to clampedAng whenever you try to look around.
+        --
+        -- Why not server: server-side SetEyeAngles writes the player's
+        -- networked m_angEyeAngles, which the snapshot system then pushes
+        -- back to the owning client and overrides any local mouse delta when
+        -- the server catches up — same snap-back symptom, just delayed by
+        -- ~RTT. The server doesn't need to set it explicitly; subsequent
+        -- cmds from the client carry the post-teleport angle (the client
+        -- predicted clampedAng, so next-frame mouse samples are relative to
+        -- it) and the server reads those via cmd:GetViewAngles. For the one
+        -- tick of the teleporting cmd, mv:SetAngles(clampedAng) gives
+        -- gamemovement the right W/A/S/D direction; server-side GetEyeAngles
+        -- is briefly stale but isn't read by anything in this path.
+        if CLIENT and IsFirstTimePredicted() then
+            ply:SetEyeAngles(clampedAng)
         end
 
         if SERVER then
