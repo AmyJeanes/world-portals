@@ -178,6 +178,17 @@ local function predictPlayerTeleport(ply, mv, cmd)
             portal:TriggerOutput("OnPlayerTeleportFromMe", ply)
             exit:TriggerOutput("OnPlayerTeleportToMe", ply)
             hook.Call("wp-teleport", GAMEMODE, portal, ply, newPos, newAng)
+            -- A wp-teleport consumer (e.g. Doors' unstick) may have repositioned
+            -- the player via ply:SetPos. That ran inside SetupMove, so without
+            -- folding it back into mv the move's FinishMove overwrites the entity
+            -- origin with the pre-adjust mv value and the relocation is lost.
+            -- Re-read and re-commit so it survives; the reassigned newPos then
+            -- rides out in the broadcast below so remote snaps match the landing.
+            local finalPos = ply:GetPos()
+            if finalPos ~= newPos then
+                mv:SetOrigin(finalPos)
+                newPos = finalPos
+            end
             -- Remote clients still need an immediate position update; the
             -- player who crossed predicts it themselves and skips the apply.
             net.Start("WorldPortals_Teleport")
@@ -189,6 +200,20 @@ local function predictPlayerTeleport(ply, mv, cmd)
         elseif IsFirstTimePredicted() then
             if newAng.r ~= 0 then
                 wp.rotating = newAng.r
+            end
+            hook.Call("wp-teleport", GAMEMODE, portal, ply, newPos, newAng)
+            -- A wp-teleport consumer (Doors' predicted unstick) may have moved the
+            -- player via ply:SetPos during this SetupMove. Fold it back into mv so
+            -- the move keeps the adjusted origin (FinishMove would otherwise revert
+            -- it), and arm the predict window with the FINAL pos below. The arming
+            -- MUST come after this: cl_teleport.lua's getPredictDelta masks
+            -- (NetworkOrigin - GetPos) and its sanity guard compares NetOrigin
+            -- against predictedPos; the server broadcasts this same final pos, so
+            -- predictedPos must equal it or the guard mis-classifies all window.
+            local finalPos = ply:GetPos()
+            if finalPos ~= newPos then
+                mv:SetOrigin(finalPos)
+                newPos = finalPos
             end
             -- Arm the predict-lerp shift window. ply:SetPos snaps the entity
             -- but the engine still lerps AbsOrigin from the pre-teleport
@@ -208,7 +233,6 @@ local function predictPlayerTeleport(ply, mv, cmd)
             wp.predictedOldPos = origin  -- pre-teleport pos, used by getPredictDelta sanity check
             wp.predictedAt = SysTime()
             wp.predictArmCount = (wp.predictArmCount or 0) + 1
-            hook.Call("wp-teleport", GAMEMODE, portal, ply, newPos, newAng)
             if wp.RecordTeleportEvent then
                 wp.RecordTeleportEvent(portal, origin, newPos, oldEyeAng, clampedAng, oldVel, newVel)
             end
