@@ -107,6 +107,83 @@ net.Receive("WorldPortals_VRMod_SetAngle", function()
     end
 end)
 
+-- Bypass entity interpolation for props caught in a rapid teleport loop.
+--
+-- GMod renders networked entities cl_interp (default 0.1s) in the past and
+-- resets the interpolation history on every teleport. A prop in a tight portal
+-- loop -- e.g. an infinite fall between a floor and ceiling portal -- teleports
+-- many times per second, faster than the ~0.1s interpolation can recover
+-- between resets, so the rendered position freezes at each post-teleport point
+-- and only jumps on the next wrap: an ~8 Hz stutter no matter the framerate.
+-- While such a prop is looping we render it at its live GetNetworkOrigin/
+-- GetNetworkAngles instead, which tracks the real motion at the snapshot rate.
+--
+-- Only RAPID loops engage this. A single or occasional teleport interpolates
+-- fine on its own (and engaging the override there would just trade the stutter
+-- for the boundary seam below), so we wait for a SECOND teleport within
+-- RAPID_WINDOW before taking over; a lone teleport leaves a record the Think
+-- hook prunes. SetRenderOrigin is a no-op on the local player and only
+-- non-player entities are armed, so the predicted local-player path is left
+-- alone.
+--
+-- Switching rendering source has a latency seam (override is ~now, normal
+-- interpolation is ~now-cl_interp), handled differently at each boundary:
+--   * ENTER: snap to the live transform. Engaging coincides with a real
+--     teleport, and the interpolated position is then one teleport behind the
+--     networked one -- easing between them would slide the prop bodily across
+--     the portal gap. A snap reads as the teleport it is.
+--   * EXIT: once teleports stop the interpolation is clean again, so ease
+--     (lerp) from the networked transform back to the interpolated one over
+--     RENDER_BLEND_TIME, then release. ACCEPTED LIMIT: a prop that leaves the
+--     loop still MOVING (e.g. physgunned out) has ~cl_interp of motion handed
+--     back to interpolation, which reads as a brief freeze; a prop that exits
+--     by coming to rest has no give-back and no freeze. Eliminating it would
+--     need the override to run at matched cl_interp latency (a teleport-aware
+--     interpolation buffer) -- deliberately not done. See
+--     memory/reference_prop_teleport_interp.md.
+wp.renderFollow = wp.renderFollow or {}
+local RAPID_WINDOW       = 0.2   -- two teleports within this => a loop interp can't track
+local RENDER_FOLLOW_TIME = 0.3   -- keep following for this long after the last teleport
+local RENDER_BLEND_TIME  = 0.15  -- ease back to interpolation over this long on exit
+
+hook.Add("Think", "WorldPortals_RenderFollow", function()
+    if not next(wp.renderFollow) then return end
+    local now = SysTime()
+    for ent, rec in pairs(wp.renderFollow) do
+        if not IsValid(ent) then
+            wp.renderFollow[ent] = nil
+        elseif not rec.expiry then
+            -- One teleport seen but no rapid pair yet: drop the record once it
+            -- can no longer pair within RAPID_WINDOW (it was an isolated tp).
+            if now - rec.lastTP > RAPID_WINDOW then wp.renderFollow[ent] = nil end
+        elseif now <= rec.expiry then
+            -- Looping: track the live networked transform (snaps on each
+            -- teleport, no interp lag between them).
+            rec.blendStart = nil
+            ent:SetRenderOrigin( ent:GetNetworkOrigin() )
+            ent:SetRenderAngles( ent:GetNetworkAngles() )
+        else
+            -- Stopped looping: ease from where we were (the networked transform,
+            -- captured once) back to the engine's interpolated transform, then
+            -- release rendering to normal interpolation.
+            if not rec.blendStart then
+                rec.blendStart   = now
+                rec.blendFromPos = ent:GetNetworkOrigin()
+                rec.blendFromAng = ent:GetNetworkAngles()
+            end
+            local frac = (now - rec.blendStart) / RENDER_BLEND_TIME
+            if frac >= 1 then
+                ent:SetRenderOrigin()
+                ent:SetRenderAngles()
+                wp.renderFollow[ent] = nil
+            else
+                ent:SetRenderOrigin( LerpVector( frac, rec.blendFromPos, ent:GetPos() ) )
+                ent:SetRenderAngles( LerpAngle( frac, rec.blendFromAng, ent:GetAngles() ) )
+            end
+        end
+    end
+end)
+
 net.Receive("WorldPortals_Teleport", function()
     local portal = net.ReadEntity()
     local ent = net.ReadEntity()
@@ -123,6 +200,21 @@ net.Receive("WorldPortals_Teleport", function()
         ent:SetPos( new_pos )
         if not ent:IsPlayer() then
             ent:SetAngles( new_angle )
+            -- Engage render-follow only for RAPID loops: record this teleport,
+            -- and take over (or refresh the window) only when another teleport
+            -- already landed within RAPID_WINDOW. A lone teleport just leaves a
+            -- record the Think hook prunes. Refreshing cancels any exit blend.
+            local now = SysTime()
+            local rec = wp.renderFollow[ent]
+            if rec then
+                if now - rec.lastTP < RAPID_WINDOW then
+                    rec.expiry = now + RENDER_FOLLOW_TIME
+                    rec.blendStart = nil
+                end
+                rec.lastTP = now
+            else
+                wp.renderFollow[ent] = { lastTP = now }
+            end
         end
         hook.Call("wp-teleport", GAMEMODE, portal, ent, new_pos, new_angle)
     end
