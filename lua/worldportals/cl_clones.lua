@@ -186,14 +186,20 @@ local function syncAppearance(rec)
     end
 end
 
+-- The engine calls RenderOverride(self, flags) with the studio render flags
+-- (STUDIO_RENDER / STUDIO_*DEPTHTEXTURE) as the second arg. Forward it to both
+-- DrawModel and any chained override: a chained override that reads flags (e.g.
+-- the sandbox prop-spawn materialize effect, which does bit.band(flags, ...))
+-- errors on a nil flags, and the error escapes our PushCustomClipPlane before
+-- the matching Pop, leaking the clip plane for the rest of the frame.
 local function makeOriginalOverride(rec)
-    return function(self)
+    return function(self, flags)
         local oldEC = render.EnableClipping(true)
         render.PushCustomClipPlane(rec.entryNrm, rec.entryD)
             if rec.savedRenderOverride then
-                rec.savedRenderOverride(self)
+                rec.savedRenderOverride(self, flags)
             else
-                self:DrawModel()
+                self:DrawModel(flags)
             end
         render.PopCustomClipPlane()
         render.EnableClipping(oldEC)
@@ -201,7 +207,7 @@ local function makeOriginalOverride(rec)
 end
 
 local function makeCloneOverride(rec)
-    return function(self)
+    return function(self, flags)
         local ent = rec.ent
         if not IsValid(ent) then return end
         local c = ent:GetColor()
@@ -210,7 +216,7 @@ local function makeCloneOverride(rec)
         render.PushCustomClipPlane(rec.exitNrm, rec.exitD)
             render.SetColorModulation(c.r / 255, c.g / 255, c.b / 255)
             render.SetBlend(c.a / 255)
-            self:DrawModel()
+            self:DrawModel(flags)
             render.SetColorModulation(1, 1, 1)
             render.SetBlend(oldBlend)
         render.PopCustomClipPlane()
