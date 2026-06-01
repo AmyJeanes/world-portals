@@ -57,6 +57,10 @@ function ENT:Initialize()
     self:DrawShadow( false )
 
     self:SetupBounds()
+
+    if SERVER then
+        self:RebuildCollisionFrame()
+    end
 end
 
 function ENT:SetupDataTables()
@@ -82,7 +86,37 @@ function ENT:SetupDataTables()
     self:NetworkVar( "Vector", "ModelPos" )
     self:NetworkVar( "Angle", "ModelAng" )
 
-    self:NetworkVarNotify("Width", function(ent, name, old, new) ent:SetupBounds(new) end)
-    self:NetworkVarNotify("Height", function(ent, name, old, new) ent:SetupBounds(nil, new) end)
-    self:NetworkVarNotify("Thickness", function(ent, name, old, new) ent:SetupBounds(nil, nil, new) end)
+    -- Rebuild the (server-only) collision frame from the resized opening. Pass the
+    -- new value explicitly -- inside the notify the accessor may still read stale --
+    -- and only touch an already-created frame (initial creation is in Initialize,
+    -- so a premature notify during pre-spawn Set* doesn't spawn an unplaced frame).
+    self:NetworkVarNotify("Width", function(ent, name, old, new)
+        ent:SetupBounds(new)
+        if SERVER and IsValid(ent.CollisionFrame) then
+            ent.CollisionFrame:BuildFrame(new, ent:GetHeight(), ent:GetThickness())
+        end
+    end)
+    self:NetworkVarNotify("Height", function(ent, name, old, new)
+        ent:SetupBounds(nil, new)
+        if SERVER and IsValid(ent.CollisionFrame) then
+            ent.CollisionFrame:BuildFrame(ent:GetWidth(), new, ent:GetThickness())
+        end
+    end)
+    self:NetworkVarNotify("Thickness", function(ent, name, old, new)
+        ent:SetupBounds(nil, nil, new)
+        if SERVER and IsValid(ent.CollisionFrame) then
+            ent.CollisionFrame:BuildFrame(ent:GetWidth(), ent:GetHeight(), new)
+        end
+    end)
+
+    -- If a portal closes or stops teleporting while a prop is passing through its
+    -- wall, restore that wall's collision (otherwise the prop would be clipping a
+    -- now-inert solid). EndTouch covers the prop simply leaving; this covers the
+    -- portal changing under a still-touching prop.
+    self:NetworkVarNotify("Open", function(ent, name, old, new)
+        if SERVER and not new then wp.DisarmPortal(ent) end
+    end)
+    self:NetworkVarNotify("EnableTeleport", function(ent, name, old, new)
+        if SERVER and not new then wp.DisarmPortal(ent) end
+    end)
 end
