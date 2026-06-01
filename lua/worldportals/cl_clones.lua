@@ -109,17 +109,33 @@ local function straddles(ent, portal)
 end
 
 -- Fill rec.entryNrm/entryD (keep the +entry_forward half) and rec.exitNrm/exitD
--- (keep the +exit_forward half), each plane placed on its portal's VISIBLE face
--- (pos - fwd*FACE_OFFSET) so the seam lines up with the glowing surface rather
--- than the crossing plane 5u behind it. The exit side folds in ExitPos/AngOffset.
+-- (keep the +exit_forward half), each plane placed on its portal's deepest
+-- VISIBLE face so the seam lines up with the glowing surface rather than the
+-- crossing plane behind it. The exit side folds in ExitPos/AngOffset.
+--
+-- Offset = FACE_OFFSET + max(0, thickness). A thin portal's face is FACE_OFFSET
+-- (5u) in front (-fwd) of pos (DrawQuadEasy at pos-fwd*5, RenderMax.x=-5). A
+-- THICK portal is a doorway tunnel of depth `thickness` extending further back
+-- (RenderMin.x = -(5+thickness)); the half straddling it must stay visible
+-- through the whole tunnel, so the seam goes on the BACK face (5+thickness) --
+-- otherwise it's clipped at the mouth and the door/interior shows through the
+-- exposed doorway depth. max(0, ...) guards against the negative thickness some
+-- consumers (e.g. TARDIS interior portals report -5/-4) set on thin portals,
+-- which would otherwise pull the seam back to the crossing plane.
+local function faceOffset(portal)
+    return FACE_OFFSET + math.max(0, portal:GetThickness())
+end
+
 local function updatePlanes(rec)
     local portal, exit = rec.portal, rec.exit
 
+    local eoff = faceOffset(portal)
     local efwd = portal:GetForward()
     local epos = portal:GetPos()
     rec.entryNrm.x, rec.entryNrm.y, rec.entryNrm.z = efwd.x, efwd.y, efwd.z
-    rec.entryD = efwd.x * epos.x + efwd.y * epos.y + efwd.z * epos.z - FACE_OFFSET
+    rec.entryD = efwd.x * epos.x + efwd.y * epos.y + efwd.z * epos.z - eoff
 
+    local xoff = faceOffset(exit)
     local xfwd = exit:GetForward()
     local xao = exit:GetExitAngOffset()
     if xao.p ~= 0 or xao.y ~= 0 or xao.r ~= 0 then
@@ -132,9 +148,9 @@ local function updatePlanes(rec)
     end
     local xpos = exit:GetPos() + xpo
     rec.exitNrm.x, rec.exitNrm.y, rec.exitNrm.z = xfwd.x, xfwd.y, xfwd.z
-    rec.exitD = xfwd.x * (xpos.x - xfwd.x * FACE_OFFSET)
-              + xfwd.y * (xpos.y - xfwd.y * FACE_OFFSET)
-              + xfwd.z * (xpos.z - xfwd.z * FACE_OFFSET)
+    rec.exitD = xfwd.x * (xpos.x - xfwd.x * xoff)
+              + xfwd.y * (xpos.y - xfwd.y * xoff)
+              + xfwd.z * (xpos.z - xfwd.z * xoff)
 end
 
 -- Mirror the original's visual customizations onto the clone. Entity-state
