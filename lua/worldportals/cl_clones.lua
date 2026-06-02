@@ -24,7 +24,14 @@
 -- teleport logic: straddling is detected each frame by a geometry test, not by
 -- when the teleport fires.
 --
--- Phase 1 (this file): physics props. Players are a later phase.
+-- Phase 1: physics props (rigid -- a single SetPos/SetAngles poses the clone).
+-- Phase 2: ragdolls. A ragdoll's visible shape is its physics-driven SKELETON,
+-- not a rigid transform, so a plain ClientsideModel of the model would draw in
+-- its reference (T-)pose. We drive the clone bone-by-bone instead: each frame we
+-- read the real ragdoll's world bone matrices and re-emit them through the portal
+-- transform onto the clone (see copyBonesThroughPortal). NPCs/players (animated,
+-- sequence-driven skeletons) are a later phase -- the same bone-copy path covers
+-- them, they just need their own candidate/straddle handling.
 
 local ENABLE_DEFAULT = "1"
 CreateClientConVar("worldportals_clones", ENABLE_DEFAULT, true, false,
@@ -43,8 +50,8 @@ local FACE_OFFSET   = 5
 
 wp.clones = wp.clones or {}   -- [entity] = record
 
--- Is this an entity we render clones for? Phase 1: physics props only, never a
--- clone we made.
+-- Is this an entity we render clones for? Physics props (rigid) and ragdolls
+-- (skeletal -- posed via per-bone matrix copy), never a clone we made.
 --
 -- A client-NoDraw'd prop is skipped by DEFAULT (it's hidden for a reason), but a
 -- consumer can opt one back in via the wp-shouldclone hook. This covers props
@@ -60,7 +67,10 @@ wp.clones = wp.clones or {}   -- [entity] = record
 local function isCandidate(ent)
     if not IsValid(ent) then return false end
     if ent.WPIsClone then return false end
-    if ent:GetClass() ~= "prop_physics" then return false end
+    -- prop_physics (rigid) or any ragdoll (prop_ragdoll, plus NPC corpses etc.).
+    -- IsRagdoll() also cleanly excludes our own clones: a clone is a ClientsideModel
+    -- of the model, NOT a ragdoll, and is flagged WPIsClone above regardless.
+    if ent:GetClass() ~= "prop_physics" and not ent:IsRagdoll() then return false end
     if ent:GetNoDraw() then
         return hook.Call("wp-shouldclone", GAMEMODE, ent) == true
     end
@@ -279,10 +289,43 @@ local function makeOriginalOverride(rec)
     end
 end
 
+-- Drive a skeletal clone's pose from the real ragdoll's live skeleton, mirrored
+-- through the portal. The clone is a plain ClientsideModel (no physics), so its
+-- bones sit in the reference pose until we override them: each frame we read the
+-- source's world bone matrices (SetupBones refreshes them to the current physics-
+-- driven, networked-interpolated pose) and re-emit each through the SAME rigid
+-- portal transform the teleport uses -- TransformPortalPos on the bone origin,
+-- TransformPortalAngle on its orientation, scale carried across. Because that
+-- transform is a proper rotation+translation, transforming origin and orientation
+-- independently is exact, so the clone's exit-half tiles the original's entry-half
+-- seamlessly bone-for-bone. Done inside the RenderOverride (draw time) because
+-- SetBoneMatrix overrides are consumed by the next DrawModel and would otherwise
+-- be clobbered by the engine's own SetupBones for the clone.
+local function copyBonesThroughPortal(rec, clone)
+    local src = rec.ent
+    src:SetupBones()
+    clone:SetupBones()
+    local n = clone:GetBoneCount()
+    if not n or n <= 0 then return end
+    for i = 0, n - 1 do
+        local m = src:GetBoneMatrix(i)
+        if m then
+            wp.TransformPortalPosInto(rec.bonePosBuf, m:GetTranslation(), rec.portal, rec.exit)
+            wp.TransformPortalAngleInto(rec.boneAngBuf, m:GetAngles(), rec.portal, rec.exit)
+            local bm = Matrix()
+            bm:SetTranslation(rec.bonePosBuf)
+            bm:SetAngles(rec.boneAngBuf)
+            bm:SetScale(m:GetScale())
+            clone:SetBoneMatrix(i, bm)
+        end
+    end
+end
+
 local function makeCloneOverride(rec)
     return function(self, flags)
         local ent = rec.ent
         if not IsValid(ent) then return end
+        if rec.skeletal then copyBonesThroughPortal(rec, self) end
         local c = ent:GetColor()
         local oldBlend = render.GetBlend()
         local oldEC = render.EnableClipping(true)
@@ -332,10 +375,17 @@ local function startStraddle(ent, portal)
         portal = portal,
         exit = exit,
         clone = clone,
+        -- A ragdoll is skeletal: the clone's pose comes from per-bone matrix copy
+        -- (copyBonesThroughPortal) rather than the rigid root SetPos/SetAngles.
+        skeletal = ent:IsRagdoll(),
         translucent = isTranslucent(ent),
         lastSeen = SysTime(),
         posBuf = Vector(),
         angBuf = Angle(),
+        -- Separate scratch for the per-bone transform so it never races the root
+        -- pose's posBuf/angBuf (different callbacks, same frame).
+        bonePosBuf = Vector(),
+        boneAngBuf = Angle(),
         entryNrm = Vector(),
         exitNrm = Vector(),
         entryD = 0,
