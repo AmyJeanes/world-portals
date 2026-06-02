@@ -380,6 +380,20 @@ local seen = {}
 local SCAN_INTERVAL = 0.04   -- seconds between discovery scans (~25 Hz)
 local nextScan = 0
 
+-- A portal can be networked-Open yet visually OFF: a TARDIS door shut keeps the
+-- linked_portal_door's Open flag true and instead gates rendering through the
+-- wp-shouldrender hook (Doors -> ShouldRenderPortal). Mirror that hook -- the
+-- client-readable authority consumers already use to gate the portal's own draw --
+-- so we don't clone a prop "through" a closed door (its emerged half showing in
+-- the interior while the door is plainly shut). Only an explicit false override
+-- vetoes; nil = no consumer opinion = active (a plain portal's on/off is its Open
+-- flag, already checked by the caller).
+local function portalActive(portal)
+    local override = hook.Call("wp-shouldrender", GAMEMODE, portal, portal:GetExit(),
+        EyePos(), EyeAngles(), LocalPlayer():GetFOV(), 1)
+    return override ~= false
+end
+
 hook.Add("Think", "WorldPortals_Clones", function()
     if wp.drawing then return end
     if not GetConVar("worldportals_clones"):GetBool() then
@@ -400,7 +414,8 @@ hook.Add("Think", "WorldPortals_Clones", function()
 
     for _, portal in ipairs(portals) do
         if IsValid(portal) and portal.GetOpen and portal:GetOpen()
-            and portal:GetEnableTeleport() and IsValid(portal:GetExit()) then
+            and portal:GetEnableTeleport() and IsValid(portal:GetExit())
+            and portalActive(portal) then
             local ppos = portal:GetPos()
             local r = portal:BoundingRadius() + FIND_MARGIN
             for _, ent in ipairs(ents.FindInSphere(ppos, r)) do
