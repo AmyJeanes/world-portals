@@ -369,6 +369,17 @@ end
 
 local seen = {}
 
+-- Discovery (the ents.FindInSphere broad-phase + per-candidate straddle tests) is
+-- the bulk of this hook's cost and scales with open-portals x nearby entities. It
+-- doesn't need to run every frame: the clone POSE is re-applied per-frame in
+-- PreDrawOpaqueRenderables (so clones stay glued regardless), and CLONE_GRACE
+-- (0.1s) comfortably outlives the gap, so a record seen on one scan survives until
+-- the next. Running it at ~SCAN_HZ instead of the frame rate cuts the cost without
+-- a visible change -- a clone appearing up to SCAN_INTERVAL late as a prop first
+-- crosses is imperceptible at any realistic push speed.
+local SCAN_INTERVAL = 0.04   -- seconds between discovery scans (~25 Hz)
+local nextScan = 0
+
 hook.Add("Think", "WorldPortals_Clones", function()
     if wp.drawing then return end
     if not GetConVar("worldportals_clones"):GetBool() then
@@ -379,6 +390,8 @@ hook.Add("Think", "WorldPortals_Clones", function()
     end
 
     local now = SysTime()
+    if now < nextScan then return end
+    nextScan = now + SCAN_INTERVAL
 
     for k in pairs(seen) do seen[k] = nil end
 
