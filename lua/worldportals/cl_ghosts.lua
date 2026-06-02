@@ -378,11 +378,27 @@ local function localGhostIsCutaway(rec)
     return EyePos():DistToSqr(camAtExit) < CUTAWAY_DIST_SQR
 end
 
+-- Let a consumer veto drawing this ghost in the CURRENT render pass. The emerged
+-- half lands at the exit; when the exit sits in a region the consumer hides from
+-- the open world -- e.g. a Doors/TARDIS interior parked thousands of units up in
+-- the skybox -- the ghost must draw ONLY in the passes where that region shows
+-- (through its portal), not in the main scene where it would float visibly in the
+-- empty sky. Consumers answer off wp.drawingent (the portal currently rendering),
+-- so this is evaluated per draw, NOT cached: the answer differs between the
+-- main-scene pass and each portal RT pass within the very same frame. Returning
+-- false skips this one draw. Because a ghost is a ClientsideModel we own (this
+-- RenderOverride), the consumer just says "skip" -- no SetNoDraw cordon dance,
+-- which consumers reserve for native props whose drawing they can't override.
+local function ghostDrawVetoed(rec, ghostEnt)
+    return hook.Call("wp-shouldghostdraw", GAMEMODE, rec.ent, ghostEnt, rec.portal, rec.exit) == false
+end
+
 local function makeGhostOverride(rec)
     return function(self, flags)
         local ent = rec.ent
         if not IsValid(ent) then return end
         if localGhostIsCutaway(rec) then return end
+        if ghostDrawVetoed(rec, self) then return end
         if rec.skeletal then copyBonesThroughPortal(rec, ent, self) end
         local c = ent:GetColor()
         local oldBlend = render.GetBlend()
@@ -413,6 +429,7 @@ local function makeWeaponGhostOverride(rec)
         local w = rec.weapon
         if not IsValid(w) then return end
         if localGhostIsCutaway(rec) then return end
+        if ghostDrawVetoed(rec, self) then return end
         copyBonesThroughPortal(rec, w, self)
         local c = w:GetColor()
         local oldBlend = render.GetBlend()
