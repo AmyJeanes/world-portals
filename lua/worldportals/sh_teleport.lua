@@ -98,8 +98,23 @@ local function predictPlayerTeleport(ply, mv, cmd)
         -- (velocity:Dot(fwd) >= 0, already skipped above); only deliberate
         -- backward motion reaches here. Thin portals (thickness <= 0) keep the
         -- exact distNow <= 0 guard, so their behaviour is unchanged.
+        --
+        -- NOCLIP EXCEPTION: the "can't bounce on emergence" reasoning relies on
+        -- the mirrored exit velocity carrying the player back OUT of the volume.
+        -- The engine's FullNoClipMove rederives velocity from the held input +
+        -- view every tick and discards mv:SetVelocity, so a noclipping player
+        -- keeps their pre-teleport WORLD velocity instead. When entry and exit
+        -- face the same world direction (e.g. a TARDIS interior/exterior pair
+        -- both facing +X), that un-mirrored velocity points straight into the
+        -- exit's front face: the eye emerges a few units inside the shell
+        -- (measured ~7u into a 42u shell) still moving inward, so the backLimit
+        -- window re-fires it — an infinite interior<->exterior bounce. The
+        -- backLimit only ever guarded against a *walking* player getting trapped
+        -- in the shell, which can't happen in noclip (no collision — they fly
+        -- straight through the volume), so fall back to the flat distNow <= 0
+        -- guard there. (Restores pre-thick-volume-allowance noclip behaviour.)
         local thickness = portal:GetThickness()
-        local backLimit = thickness > 0 and -thickness or 0
+        local backLimit = (thickness > 0 and ply:GetMoveType() ~= MOVETYPE_NOCLIP) and -thickness or 0
         if distNow <= backLimit then goto cont end
         local distNext = (nextEyeX - pos.x) * fwd.x + (nextEyeY - pos.y) * fwd.y + (nextEyeZ - pos.z) * fwd.z
         -- The hull centre, swept the same way (this tick / next tick along the
