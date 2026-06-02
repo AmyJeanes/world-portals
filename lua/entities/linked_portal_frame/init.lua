@@ -3,6 +3,14 @@ AddCSLuaFile("cl_init.lua")
 
 include("shared.lua")
 
+-- Per-tick portal displacement above which we SNAP the hull to the portal instead
+-- of sweeping it as a shadow. A continuous flight moves the portal a handful of
+-- units per tick (well under this), so it sweeps and pushes props; a TARDIS
+-- demat/remat warp relocates it thousands of units in a single tick, which no
+-- shadow can sweep across -- there's no "push" possible through an instant jump --
+-- so we teleport the hull, mirroring ComputeShadowControl's teleportdistance.
+local SHADOW_TELEPORT_DIST = 128
+
 -- Eight corners of an axis-aligned box in this entity's local space.
 local function boxVerts(x0, x1, y0, y1, z0, z1)
     return {
@@ -46,9 +54,18 @@ function ENT:BuildFrame(width, height, thickness)
     -- frame funnels props without altering player movement.
     self:SetCollisionGroup(COLLISION_GROUP_WEAPON)
 
+    if not IsValid(self:GetPhysicsObject()) then return false end
+    -- Drive the hull as an immovable physics SHADOW rather than a frozen static body.
+    -- Both flags false => external forces never displace it (a prop bumping the doorway
+    -- can't shove the TARDIS's frame around), yet UpdateShadow (ENT:Think) can still
+    -- sweep it toward the portal each tick -- and a SWEPT shadow PUSHES props in its
+    -- path instead of teleporting through them. So when the portal moves (a flying
+    -- TARDIS), the doorway carries props out of the way. A static EnableMotion(false)
+    -- hull SetPos'd each tick instead teleported past props and flung them (verified
+    -- A/B: shadow sweep pushed a crate cleanly; SetPos ejected it backwards).
+    self:MakePhysicsObjectAShadow(false, false)
     local phys = self:GetPhysicsObject()
     if not IsValid(phys) then return false end
-    phys:EnableMotion(false)
     phys:SetMass(50000)
     self:SetMoveType(MOVETYPE_NONE)
     return true
@@ -66,11 +83,12 @@ end
 -- the frame unparented takes it out of that hierarchy so the no-collide can't reach
 -- it (verified: an unparented frame still blocks a prop no-collided with the shell).
 --
--- The cost of not parenting: nothing moves the frame for us. A motion-disabled
--- VPhysics hull doesn't track anything on its own anyway, so we drive BOTH the
--- entity transform (so the networked position + client debug overlay follow) and
--- the hull from the portal here each tick. The drift guard keeps it free when the
--- portal is stationary. (This also subsumes the moving-parent stranded-hull case.)
+-- The cost of not parenting: nothing moves the frame for us. A shadow hull doesn't
+-- track anything on its own anyway, so we drive BOTH the entity transform (so the
+-- networked position + client debug overlay follow) and the hull (via UpdateShadow,
+-- which sweeps + pushes) from the portal here each tick. The drift guard keeps it
+-- free when the portal is stationary. (This also subsumes the moving-parent
+-- stranded-hull case.)
 function ENT:Think()
     local portal = self.Portal
     if not IsValid(portal) then
@@ -83,11 +101,24 @@ function ENT:Think()
         self:SetPos(pos)
         self:SetAngles(ang)
     end
+    -- Sweep the physics hull toward the portal as a shadow (BuildFrame made it one),
+    -- so a MOVING portal PUSHES props in the doorway along with it instead of the
+    -- old SetPos snap teleporting the hull past them. UpdateShadow drives the hull
+    -- while leaving collision intact. A large single-tick jump (a demat/remat warp)
+    -- can't be swept, so snap the hull for that -- see SHADOW_TELEPORT_DIST. The
+    -- drift check (hull not yet at the portal) keeps sweeping while it catches up and
+    -- leaves it free once converged at a stationary portal.
     local phys = self:GetPhysicsObject()
-    if IsValid(phys) and (not phys:GetPos():IsEqualTol(pos, 0.05) or phys:GetAngles() ~= ang) then
-        phys:EnableMotion(false)
-        phys:SetPos(pos)
-        phys:SetAngles(ang)
+    if IsValid(phys) then
+        local last = self.LastShadowTarget
+        if (not last) or pos:Distance(last) > SHADOW_TELEPORT_DIST then
+            phys:SetPos(pos)
+            phys:SetAngles(ang)
+        elseif not phys:GetPos():IsEqualTol(pos, 0.05) or phys:GetAngles() ~= ang then
+            phys:Wake()
+            phys:UpdateShadow(pos, ang, FrameTime())
+        end
+        self.LastShadowTarget = pos
     end
     -- Keep the (unparented) hull no-collided with the wall it sits in, so it doesn't
     -- interpenetrate the TARDIS shell and launch it. Low-frequency re-check picks up
