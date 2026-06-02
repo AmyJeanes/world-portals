@@ -380,33 +380,28 @@ local seen = {}
 local SCAN_INTERVAL = 0.04   -- seconds between discovery scans (~25 Hz)
 local nextScan = 0
 
--- A portal can be networked-Open yet visually OFF: a TARDIS door shut keeps the
--- linked_portal_door's Open flag true and instead gates rendering through the
--- wp-shouldrender hook (Doors -> ShouldRenderPortal). Mirror that hook -- the
--- client-readable authority consumers already use to gate the portal's own draw --
--- so we don't clone a prop "through" a closed door (its emerged half showing in
--- the interior while the door is plainly shut). Only an explicit false override
--- vetoes; nil = no consumer opinion = active (a plain portal's on/off is its Open
--- flag, already checked by the caller).
-local function portalActive(portal)
-    local override = hook.Call("wp-shouldrender", GAMEMODE, portal, portal:GetExit(),
-        EyePos(), EyeAngles(), LocalPlayer():GetFOV(), 1)
-    return override ~= false
-end
-
 -- A clone depicts a prop mid-transit, so only show one where the prop would
 -- actually teleport through this portal. Consult wp-shouldtp -- the SAME
--- per-entity veto the teleport itself uses -- and skip on an explicit false. This
--- catches scenarios the per-portal render gate above doesn't: a TARDIS in the
--- vortex (in flight), an interior being redecorated, the prop being the TARDIS's
--- towed/tracked entity, or a custom-linked sub-door switched off -- cases where
--- the portal still renders but a crossing prop must NOT read as continuous because
--- it isn't going anywhere. The downstream ShouldTeleportPortal handlers are
+-- per-entity veto the teleport itself uses -- and skip on an explicit false.
+--
+-- This is the right "portal off" signal because it is POSITION-INDEPENDENT: it
+-- reads networked state (DoorOpen, vortex/redecorate flags, GetTracking,
+-- custom-link part on/off) identically from any viewpoint. We deliberately do NOT
+-- gate on wp-shouldrender: the exterior portal's ShouldRenderPortal returns false
+-- once the camera is far from the exterior box (a TARDIS interior is thousands of
+-- units away), so a render-gated clone vanished the moment you stepped INSIDE --
+-- even though the emerged half should still show through the interior portal. The
+-- clone is a world-space model at the exit; whether the entry portal's SURFACE
+-- draws from the current eye is irrelevant to whether the clone should exist.
+--
+-- Covers: closed door, TARDIS in the vortex (in flight), interior redecorating,
+-- the prop being the TARDIS's towed/tracked entity, a custom-linked sub-door
+-- switched off, and TardisParts. The downstream ShouldTeleportPortal handlers are
 -- registered shared for the predicted player teleport and read networked state, so
 -- this resolves on the client. nil = no veto = clone. (A purely server-side veto --
 -- e.g. tracking's constraint-set check -- can't be seen here, but erring toward
--- showing a clone the server won't teleport is harmless: the prop simply never
--- crosses the plane, so its clone stays fully clipped and invisible.)
+-- showing a clone the server won't teleport is harmless: the prop never crosses
+-- the plane, so its clone stays fully clipped and invisible.)
 local function wouldTeleport(portal, ent)
     return hook.Call("wp-shouldtp", GAMEMODE, portal, ent) ~= false
 end
@@ -431,8 +426,7 @@ hook.Add("Think", "WorldPortals_Clones", function()
 
     for _, portal in ipairs(portals) do
         if IsValid(portal) and portal.GetOpen and portal:GetOpen()
-            and portal:GetEnableTeleport() and IsValid(portal:GetExit())
-            and portalActive(portal) then
+            and portal:GetEnableTeleport() and IsValid(portal:GetExit()) then
             local ppos = portal:GetPos()
             local r = portal:BoundingRadius() + FIND_MARGIN
             for _, ent in ipairs(ents.FindInSphere(ppos, r)) do
