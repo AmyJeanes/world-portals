@@ -23,11 +23,45 @@ hook.Add("PopulateToolMenu", "WorldPortals_PopulateToolMenu", function()
         recursion:SetTooltip("Default: 2. Higher = portals seen through portals seen through portals... up to 9 levels.")
         panel:AddItem(recursion)
 
+        -- Inline performance warning: each recursion level re-renders every visible
+        -- portal again, so 4+ with several portals in view gets expensive fast. Show
+        -- a coloured note only while depth is 4+; hide it at 3 or under.
+        local recurseWarn = vgui.Create("DLabel")
+        recurseWarn:SetText("\xE2\x9A\xA0 Depth 4+ can seriously hurt performance with multiple portals visible at once.")
+        recurseWarn:SetTextColor(Color(200, 60, 20))
+        recurseWarn:SetWrap(true)
+        recurseWarn:SetAutoStretchVertical(true)
+        panel:AddItem(recurseWarn)
+
+        local function updateRecurseWarn(value)
+            local show = math.floor(tonumber(value) or 0) > 3
+            if recurseWarn:IsVisible() ~= show then
+                recurseWarn:SetVisible(show)
+                -- AddItem wraps each item in a DSizeToContents panel; hiding the
+                -- inner label doesn't shrink that wrapper, so the freed space
+                -- lingers. Re-fit the wrapper (collapses to 0 when hidden, grows
+                -- back when shown) before reflowing the form.
+                local wrap = recurseWarn:GetParent()
+                if IsValid(wrap) then wrap:InvalidateLayout(true) end
+                panel:InvalidateLayout(true)
+            end
+        end
+        updateRecurseWarn(GetConVar("worldportals_recurse_depth"):GetInt())
+        recursion.OnValueChanged = function(_, value)
+            updateRecurseWarn(value)
+        end
+
         local ghosts = vgui.Create("DCheckBoxLabel")
         ghosts:SetText("Entity Ghosts")
         ghosts:SetConVar("worldportals_ghosts")
         ghosts:SetTooltip("While something is mid-teleport, show its emerging half coming out the other portal so it looks like one whole body crossing through, instead of being cut off at the opening. Works for players, NPCs, ragdolls and props.")
         panel:AddItem(ghosts)
+
+        local selfGhost = vgui.Create("DCheckBoxLabel")
+        selfGhost:SetText("See yourself in portals")
+        selfGhost:SetConVar("worldportals_ghosts_self")
+        selfGhost:SetTooltip("Show your own body in portals: your reflection seen looking through a portal, plus the 'ghost' half that completes your body while you're mid-teleport (in third-person and recursive views). Turn off to never see yourself in any portal.")
+        panel:AddItem(selfGhost)
 
         local debugMode = vgui.Create("DComboBox")
         debugMode:SetSortItems(false)

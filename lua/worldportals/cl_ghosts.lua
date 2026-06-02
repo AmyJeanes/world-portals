@@ -40,8 +40,21 @@
 -- inside the ghost and it would be an in-your-face cutaway "ghost".
 
 local ENABLE_DEFAULT = "1"
-CreateClientConVar("worldportals_ghosts", ENABLE_DEFAULT, true, false,
+-- Hold the ConVar objects (CreateClientConVar returns them) rather than calling
+-- GetConVar inline -- both are read on the per-frame Think path, and GetConVar's
+-- string->convar hash lookup each call is the expensive part. :GetBool() on the
+-- held object is a cheap live read, so no change-callback cache is needed.
+local cvGhosts = CreateClientConVar("worldportals_ghosts", ENABLE_DEFAULT, true, false,
     "World Portals - render continuous clipped ghosts of entities straddling a portal", 0, 1)
+
+-- Opt-out for seeing your OWN body in portals. Covers two things: this file
+-- skips the local player as a ghost candidate when off (no completed-half ghost
+-- in third-person / recursion), and cl_render.lua's ShouldDrawLocalPlayer gate
+-- stops drawing the real local player into portal RTs (no reflection through a
+-- portal either). Off => you never see yourself in any portal view. Remote
+-- players / NPCs / props stay governed by worldportals_ghosts.
+local cvGhostsSelf = CreateClientConVar("worldportals_ghosts_self", "1", true, false,
+    "World Portals - show your own body in portals (your reflection through a portal + the ghost half while mid-teleport)", 0, 1)
 
 local GHOST_GRACE   = 0.1   -- seconds to keep a ghost alive after the straddle test drops out (anti-flicker)
 local OPENING_SLACK = 8     -- units of slack on the portal opening (width/height) test
@@ -73,6 +86,13 @@ wp.ghosts = wp.ghosts or {}   -- [entity] = record
 local function isCandidate(ent)
     if not IsValid(ent) then return false end
     if ent.WPIsGhost then return false end
+    -- Per-player opt-out for one's OWN ghost. Short-circuits before the convar
+    -- read so it costs nothing for the (common) non-local-player candidates; for
+    -- the local player it gates at most once per scan. Off => no self-ghost record
+    -- is ever created, and any live one expires via the GHOST_GRACE path.
+    if ent == LocalPlayer() and not cvGhostsSelf:GetBool() then
+        return false
+    end
     -- prop_physics (rigid) or a skeletal entity: a ragdoll (prop_ragdoll, NPC
     -- corpses), a live NPC, or a player -- INCLUDING the local player. The ghost
     -- completes the local player's clipped body into a whole one wherever the body
@@ -603,7 +623,7 @@ end
 
 hook.Add("Think", "WorldPortals_Ghosts", function()
     if wp.drawing then return end
-    if not GetConVar("worldportals_ghosts"):GetBool() then
+    if not cvGhosts:GetBool() then
         if next(wp.ghosts) then
             for _, rec in pairs(wp.ghosts) do endStraddle(rec) end
         end
