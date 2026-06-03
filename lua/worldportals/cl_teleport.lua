@@ -13,7 +13,7 @@ local STAIR_STRIP_TIMEOUT = 0.5
 
 -- Predict-lerp diagnostic counters, read by the debug HUD (cl_predictdebug.lua).
 wp.predictArmCount = wp.predictArmCount or 0
-wp.predictDisarmReasons = wp.predictDisarmReasons or {timeout=0, sanityFail=0}
+wp.predictDisarmReasons = wp.predictDisarmReasons or {timeout=0}
 
 -- Arm the roll fade (wp.rotating) + stair-strip window (wp.stairStripAt) for a
 -- local teleport. Called from the prediction branch (listen server) and from
