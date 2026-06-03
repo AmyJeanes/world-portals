@@ -5,7 +5,6 @@
 -- it at the server's authoritative pos until GetPos catches up. Disarm is a
 -- pure timeout (convergence-detection fired too early on the non-monotonic
 -- drift). SysTime, not CurTime (CurTime in SetupMove is the future tick time).
--- See CLAUDE.md + memory/reference_predict_engine_limits.md.
 local PREDICT_TIMEOUT = 0.5
 
 -- Window for stripping the engine's post-teleport stair smoothing (see CalcView).
@@ -68,7 +67,6 @@ hook.Add("CalcView", "WorldPortals_View", function(ply, pos, ang, fov)
     -- so it self-measures. Stashed in wp.stairLeak for CalcViewModelView. Gated
     -- on its own window (both realms, unlike the predict shift), so normal
     -- stair-stepping keeps its smoothing.
-    -- See memory/reference_teleport_stair_view_smoothing.md.
     if wp.stairStripAt and SysTime() - wp.stairStripAt < STAIR_STRIP_TIMEOUT then
         local base = newOrigin or pos
         wp.stairLeak = pos.z - ply:EyePos().z

@@ -113,7 +113,7 @@ end)
 -- looping we render it at its live GetNetworkOrigin/Angles instead: snap on enter
 -- (it's a real teleport), ease back to interpolation on exit. Only RAPID loops
 -- engage (a lone teleport interpolates fine). Accepted limit: a prop leaving the
--- loop still moving gets a brief freeze. See memory/reference_prop_teleport_interp.md.
+-- loop still moving gets a brief freeze.
 wp.renderFollow = wp.renderFollow or {}
 local RAPID_WINDOW       = 0.2   -- two teleports within this => a loop interp can't track
 local RENDER_FOLLOW_TIME = 0.3   -- keep following for this long after the last teleport
@@ -172,7 +172,7 @@ net.Receive("WorldPortals_Teleport", function()
             -- our roll/stair window or fired the client-realm wp-teleport (which
             -- re-points our own ghost pair). Drive both from the broadcast here.
             -- Gate on SinglePlayer: on a listen server the prediction branch
-            -- already did this ~RTT ago. See memory/reference_singleplayer_no_prediction.md.
+            -- already did this ~RTT ago.
             if game.SinglePlayer() then
                 if wp.ArmTeleportView then wp.ArmTeleportView(new_angle) end
                 hook.Call("wp-teleport", GAMEMODE, portal, ent, new_pos, new_angle)

@@ -9,7 +9,6 @@ local CROSS_SKIN = 2
 -- Noclip discards the mirrored exit velocity (FullNoClipMove rederives it from
 -- input), so a same-facing pair (TARDIS) re-crosses and ping-pongs. Briefly
 -- suppress re-fire so the view rotation can steer them clear.
--- See memory/reference_noclip_velocity_override.md.
 local NOCLIP_TP_COOLDOWN = 0.25
 local function predictPlayerTeleport(ply, mv, cmd)
     if CLIENT and ply ~= LocalPlayer() then return end
@@ -67,7 +66,6 @@ local function predictPlayerTeleport(ply, mv, cmd)
         -- and bounce the player. Thick portals allow firing back to the cull
         -- plane so you can re-cross their walkable volume — except in noclip,
         -- where the un-mirrored velocity would just re-fire the bounce.
-        -- See memory/reference_noclip_velocity_override.md.
         local thickness = portal:GetThickness()
         local backLimit = (thickness > 0 and ply:GetMoveType() ~= MOVETYPE_NOCLIP) and -thickness or 0
         if distNow <= backLimit then goto cont end
@@ -117,13 +115,11 @@ local function predictPlayerTeleport(ply, mv, cmd)
         -- makes ply:GetPos() report the destination before wp-teleport runs, so
         -- a consumer unstick resolves against it. First-time-only here left the
         -- player stuck at the raw transform for ~RTT at high ping.
-        -- See memory/reference_predict_resim_consumer_sideeffects.md.
         ply:SetPos(newPos)
         -- SetEyeAngles actually rotates the camera (cmd:SetViewAngles alone
         -- no-ops). Client + first-time only: a server write or a resim re-write
         -- both snap back mouse moved during the window. SP runs no client
-        -- prediction, so there the server write is the only path. See
-        -- memory/reference_predict_angle_contamination.md + reference_singleplayer_no_prediction.md.
+        -- prediction, so there the server write is the only path.
         if (CLIENT and IsFirstTimePredicted()) or (SERVER and game.SinglePlayer()) then
             ply:SetEyeAngles(clampedAng)
         end
@@ -157,7 +153,7 @@ local function predictPlayerTeleport(ply, mv, cmd)
             -- (and the mv re-sync below folding a consumer relocation back in)
             -- must re-run each resim or the player reverts to the raw transform
             -- for the unacked window. Consumers' wp-teleport handlers must be
-            -- idempotent/resim-safe. See memory/reference_predict_resim_consumer_sideeffects.md.
+            -- idempotent/resim-safe.
             hook.Call("wp-teleport", GAMEMODE, portal, ply, newPos, newAng)
             local finalPos = ply:GetPos()
             if finalPos ~= newPos then
@@ -171,8 +167,7 @@ local function predictPlayerTeleport(ply, mv, cmd)
                 if wp.ArmTeleportView then wp.ArmTeleportView(newAng) end
                 -- Predict-lerp shift window: CalcView shifts the camera by
                 -- (NetworkOrigin - GetPos) while the engine lerps AbsOrigin for
-                -- ~RTT after the snap. SysTime, not CurTime (see CLAUDE.md +
-                -- memory/reference_predict_engine_limits.md).
+                -- ~RTT after the snap. SysTime, not CurTime (the future tick time).
                 wp.predictedPos = newPos
                 wp.predictedOldPos = origin
                 wp.predictedAt = SysTime()
