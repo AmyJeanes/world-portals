@@ -1,3 +1,4 @@
+-- Render follow
 
 -- Bypass entity interpolation for a prop in a rapid teleport loop. GMod renders
 -- entities cl_interp in the past and resets the interp history on every teleport,

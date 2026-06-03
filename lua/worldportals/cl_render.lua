@@ -1,3 +1,4 @@
+-- Render
 
 wp.matBlack = Material( "wp/black" )
 wp.matTrans = Material( "wp/trans" )

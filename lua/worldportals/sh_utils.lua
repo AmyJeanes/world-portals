@@ -1,3 +1,4 @@
+-- Utils
 
 -- Checks if an object's position is behind a plane
 function wp.IsBehind( object_pos, plane_pos, plane_forward )

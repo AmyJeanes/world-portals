@@ -1,3 +1,4 @@
+-- View corrections
 
 -- Predict-lerp window: after a local teleport the engine's snapshot interp
 -- pulls ply:GetPos() through wild values for a few frames (blank/sky frames).

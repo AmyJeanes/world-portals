@@ -1,3 +1,5 @@
+-- Collision
+
 -- Portal-aware collision for transiting props. A portal is usually mounted flush
 -- against a solid (a TARDIS shell), so a decent-sized prop jams on that wall
 -- before its centre can cross the plane. While a dynamic prop touches an open

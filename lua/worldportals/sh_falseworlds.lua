@@ -1,3 +1,5 @@
+-- False worlds
+
 wp.falseworlds = wp.falseworlds or {}
 -- Client-only cache of long-lived ClientsideModel parts keyed by false-world id.
 -- Kept separate from wp.falseworlds so re-registering doesn't have to fight table.Copy.

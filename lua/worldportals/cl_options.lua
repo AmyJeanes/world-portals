@@ -1,3 +1,5 @@
+-- Options
+
 hook.Add("PopulateToolMenu", "WorldPortals_PopulateToolMenu", function()
     ---@diagnostic disable-next-line: deprecated
     spawnmenu.AddToolMenuOption("Options", "World Portals", "WorldPortals_Options", "Settings", "", "", function(panel)

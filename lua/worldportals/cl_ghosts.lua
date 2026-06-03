@@ -1,3 +1,5 @@
+-- Ghosts
+
 -- Continuous entity rendering across portals ("portal ghosts"). An entity
 -- straddling a portal is otherwise cut off at the opening, so we draw it as two
 -- clipped halves: the real entity (entry-forward half) and a clientside ghost at

@@ -1,12 +1,10 @@
+-- Debug overlay
 
 CreateClientConVar("worldportals_debug", "0", true, false, "World Portals - Debug overlay (0=off, 1=clipped to visible, 2=rendered only, 3=all incl. culled)", 0, 3)
 
--- Tell the renderer whether to log per-render entries for us. When the
--- overlay is off the renderer skips that work entirely, so consumers
--- without the overlay pay nothing. The renderer (cl_render.lua) loads
--- after this file alphabetically, so wp.SetRecordRenders may not exist
--- at first include — guard and rely on the cvar callback to sync once
--- everything's loaded.
+-- Toggle the renderer's per-render logging from the cvar (off => it skips that
+-- work, so non-overlay users pay nothing). cl_render loads after us alphabetically,
+-- so guard SetRecordRenders and let the callback sync once loaded.
 local function syncRecord()
     if wp.SetRecordRenders then
         wp.SetRecordRenders(GetConVar("worldportals_debug"):GetInt() > 0)
@@ -14,9 +12,7 @@ local function syncRecord()
 end
 syncRecord()
 cvars.AddChangeCallback("worldportals_debug", syncRecord, "WorldPortals_Debug_Sync")
--- Sync once on first frame after all autorun files have loaded so the
--- initial state matches the persisted convar value (covers the case
--- where the convar value is non-zero at boot).
+-- Sync once after all files load so a persisted non-zero cvar takes effect at boot.
 hook.Add("InitPostEntity", "WorldPortals_Debug_InitSync", function()
     syncRecord()
     hook.Remove("InitPostEntity", "WorldPortals_Debug_InitSync")
@@ -50,13 +46,8 @@ hook.Add("HUDPaint", "WorldPortals_Debug", function()
     local aspect = ScrW() / ScrH()
     local list, count = wp.GetFrameRenderedList()
 
-    -- Pass 1: draw every actually-rendered chain, projecting through the
-    -- camera the renderer used. The renderer already did the recursion,
-    -- the shouldrender checks, the exit-plane culls, and the camera
-    -- transforms — we just visualise the result. No recursion here, no
-    -- TransformPortalPos/Angle, no shouldrender per portal. The whole
-    -- overlay collapses to N projection calls, where N is the actual
-    -- on-screen render count.
+    -- Pass 1: draw every rendered chain by projecting through the camera the
+    -- renderer used (it already did the recursion/culls — we just visualise).
     -- Mode 1 = "clipped to visible": orange polygons drawn as the
     --          cumulative-ancestor-clipped shape (cumPoly) so they don't
     --          escape the green parent. Faithful "what the player sees
