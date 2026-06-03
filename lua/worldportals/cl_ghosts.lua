@@ -238,26 +238,36 @@ local function makeOriginalOverride(rec)
     end
 end
 
--- Pose a skeletal ghost from the source's live skeleton: read each world bone
--- matrix (SetupBones refreshes them) and re-emit through the portal transform.
--- Done inside the RenderOverride because SetBoneMatrix is consumed by the next
--- DrawModel (the engine's own SetupBones would otherwise clobber it).
+local YAW180 = Matrix()
+YAW180:SetAngles(Angle(0, 180, 0))
+
+-- Pose a skeletal ghost from the source's live skeleton: re-emit each world bone
+-- matrix through the portal. Done inside the RenderOverride because SetBoneMatrix
+-- is consumed by the next DrawModel (the engine's own SetupBones would clobber it).
 local function copyBonesThroughPortal(rec, src, ghost)
     src:SetupBones()
     ghost:SetupBones()
     local n = ghost:GetBoneCount()
     if not n or n <= 0 then return end
-    local bm = rec.boneMatrix
+
+    -- The through-portal transform is the same for every bone, so compose it once
+    -- as exit-frame * yaw180 * entry-frame^-1 (the WorldToLocal -> mirror ->
+    -- LocalToWorld pipeline of TransformPortalPos) and reduce each bone to one
+    -- multiply -- no per-bone transform math or translation/angle/scale allocs.
+    local exit = rec.exit
+    local offset = exit:GetExitPosOffset()
+    local xparent = exit:GetParent()
+    if IsValid(xparent) then offset:Rotate(xparent:GetAngles()) end
+    local entry, ex = rec.entryFrame, rec.exitFrame
+    entry:SetAngles(rec.portal:GetAngles())
+    entry:SetTranslation(rec.portal:GetPos())
+    ex:SetAngles(exit:GetAngles() + exit:GetExitAngOffset())
+    ex:SetTranslation(exit:GetPos() + offset)
+    local M = ex * YAW180 * entry:GetInverseTR()
+
     for i = 0, n - 1 do
         local m = src:GetBoneMatrix(i)
-        if m then
-            wp.TransformPortalPosInto(rec.bonePosBuf, m:GetTranslation(), rec.portal, rec.exit)
-            wp.TransformPortalAngleInto(rec.boneAngBuf, m:GetAngles(), rec.portal, rec.exit)
-            bm:SetTranslation(rec.bonePosBuf)
-            bm:SetAngles(rec.boneAngBuf)
-            bm:SetScale(m:GetScale())
-            ghost:SetBoneMatrix(i, bm)
-        end
+        if m then ghost:SetBoneMatrix(i, M * m) end
     end
 end
 
@@ -448,11 +458,9 @@ local function startStraddle(ent, portal)
         lastSeen = SysTime(),
         posBuf = Vector(),
         angBuf = Angle(),
-        -- Separate scratch for the per-bone transform so it never races the root
-        -- pose's posBuf/angBuf (different callbacks, same frame).
-        bonePosBuf = Vector(),
-        boneAngBuf = Angle(),
-        boneMatrix = Matrix(),
+        -- Reused scratch for the per-pose through-portal bone matrix.
+        entryFrame = Matrix(),
+        exitFrame = Matrix(),
         entryNrm = Vector(),
         exitNrm = Vector(),
         entryD = 0,
