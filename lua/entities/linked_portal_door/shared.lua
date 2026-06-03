@@ -61,6 +61,8 @@ function ENT:Initialize()
     if SERVER then
         self:RebuildCollisionFrame()
     end
+
+    wp.RegisterPortal(self)
 end
 
 function ENT:SetupDataTables()

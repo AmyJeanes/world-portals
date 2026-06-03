@@ -116,7 +116,7 @@ hook.Add("HUDPaint", "WorldPortals_Debug", function()
     --   rendered_hfov = 2*atan(tan(vfov/2) * aspect)
     local hfov4_3 = LocalPlayer():GetFOV()
     local camFov = math.deg(2 * math.atan(math.tan(math.rad(hfov4_3) * 0.5) * 0.75 * aspect))
-    for _, portal in ipairs(ents.FindByClass("linked_portal_door")) do
+    for _, portal in ipairs(wp.portals) do
         if IsValid(portal) and not renderedAtD1[portal] then
             local pts = wp.GetPortalScreenPolygon(portal, camPos, camAng, camFov, aspect)
             drawScreenPolygon(pts)

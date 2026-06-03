@@ -516,10 +516,7 @@ hook.Add("Think", "WorldPortals_Ghosts", function()
 
     for k in pairs(seen) do seen[k] = nil end
 
-    local portals = wp.portals
-    if not portals then portals = ents.FindByClass("linked_portal_door") end
-
-    for _, portal in ipairs(portals) do
+    for _, portal in ipairs(wp.portals) do
         if IsValid(portal) and portal.GetOpen and portal:GetOpen()
             and portal:GetEnableTeleport() and IsValid(portal:GetExit()) then
             local ppos = portal:GetPos()

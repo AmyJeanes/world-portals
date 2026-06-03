@@ -82,7 +82,7 @@ hook.Add("HUDPaint", "WorldPortals_DebugPredictHUD", function()
 
     -- Nearest portal being approached.
     local nearestPortal, nearestDist
-    for _, portal in ipairs(ents.FindByClass("linked_portal_door")) do
+    for _, portal in ipairs(wp.portals) do
         if IsValid(portal) and portal.GetOpen and portal:GetOpen() and portal:GetEnableTeleport() then
             local fwd = portal:GetForward()
             if vel:Dot(fwd) < 0 then

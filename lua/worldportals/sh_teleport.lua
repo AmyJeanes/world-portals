@@ -45,10 +45,10 @@ local function predictPlayerTeleport(ply, mv, cmd)
     local nextCenterY = hullCenterY + velocity.y * frameTime
     local nextCenterZ = hullCenterZ + velocity.z * frameTime
 
-    for _, portal in ipairs(ents.FindByClass("linked_portal_door")) do
-        -- Freshly-spawned portals can appear in FindByClass before their
-        -- NetworkVar accessors are wired up (Initialize / SetupDataTables
-        -- hasn't run on this realm yet). Skip until they're fully alive.
+    for _, portal in ipairs(wp.portals) do
+        -- A portal can be in the registry before its NetworkVar accessors are
+        -- wired up (registered late in Initialize, but a stale entry could
+        -- survive a frame). Skip until it's fully alive.
         if not IsValid(portal) or not portal.GetOpen then goto cont end
         if not (portal:GetOpen() and portal:GetEnableTeleport()) then goto cont end
 

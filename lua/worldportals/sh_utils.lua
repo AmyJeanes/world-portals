@@ -127,7 +127,7 @@ function wp.GetFirstPortalHit(source, direction)
         Distance = 0,
         HitPos = Vector(0,0,0)
     }
-    for _,v in pairs(ents.FindByClass("linked_portal_door")) do
+    for _, v in ipairs(wp.portals) do
         if v.GetExit and IsValid(v:GetExit()) then
             local hitPos = util.IntersectRayWithPlane(source, direction, v:GetPos(), v:GetForward())
 

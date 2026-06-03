@@ -14,7 +14,6 @@ wp.matView = CreateMaterial(
 )
 wp.matView2 = CreateMaterial("WorldPortals", "Core_DX90", {["$basetexture"] = wp.matBlack:GetName(), ["$model"] = "1", ["$nocull"] = "1"})
 
-wp.portals = {}
 wp.drawing = true --default portals to not draw
 wp.rendermode = false
 local WEAPON_COLOR_OFF = Vector(0, 0, 0)
@@ -772,10 +771,6 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
 
     local oldRenderDepth = wp.renderdepth
     wp.renderdepth = depth
-
-    if depth == 1 or not wp.portals then
-        wp.portals = ents.FindByClass( "linked_portal_door" )
-    end
 
     local portals = wp.portals
     if ( not portals ) then
