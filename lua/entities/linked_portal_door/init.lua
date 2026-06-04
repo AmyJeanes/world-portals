@@ -75,7 +75,7 @@ function ENT:Touch( ent )
         end
     end
 
-    -- Arm the wall pass-through for any dynamic or physgun-held prop, in any
+    -- Arm the parent pass-through for any dynamic or physgun-held prop, in any
     -- direction (a held prop's velocity wanders). Static props excluded; wp-shouldtp
     -- guards the structure.
     local entphys = ent:GetPhysicsObject()
@@ -109,7 +109,7 @@ function ENT:Touch( ent )
             local phys = ent:GetPhysicsObject()
             if IsValid(phys) then phys:SetVelocityInstantaneous( new_velocity ) end
 
-            -- Arm the exit side now (the prop just emerged into the exit's wall),
+            -- Arm the exit side now (the prop just emerged into the exit's parent),
             -- so the handoff is seamless rather than waiting a tick for the exit's
             -- own Touch to fire. The entry side disarms via its EndTouch.
             wp.ArmNoCollide( exit, ent )
@@ -138,7 +138,7 @@ function ENT:Touch( ent )
     end
 end
 
--- Restore wall collision when the prop leaves the doorway. On teleport it's moved
+-- Restore parent collision when the prop leaves the doorway. On teleport it's moved
 -- out of the trigger, so this disarms the entry side (the exit was armed in Touch).
 function ENT:EndTouch( ent )
     wp.DisarmNoCollide( ent, self )
@@ -163,8 +163,8 @@ function ENT:RebuildCollisionFrame()
         f:SetPos(self:GetPos())
         f:SetAngles(self:GetAngles())
         f:Spawn()
-        -- Deliberately NOT parented: the prop<->wall no-collide would disable the
-        -- prop against all of the wall's parented descendants, so a parented frame
+        -- Deliberately NOT parented: the prop<->parent no-collide would disable the
+        -- prop against the parent's whole parented subtree, so a parented frame
         -- would be phased too. It tracks the portal via its own Think (.Portal);
         -- WPPortal networks the reference for the client debug overlay.
         f.Portal = self
@@ -172,10 +172,10 @@ function ENT:RebuildCollisionFrame()
         self.CollisionFrame = f
     end
     f:BuildFrame(w, h, self:GetThickness())
-    -- No-collide the (unparented) frame with the wall it sits in NOW, before the next
-    -- physics tick: an overlapping solid hull would interpenetrate that wall and the
-    -- physics solver would violently shove the wall away. The frame's Think re-checks
-    -- this periodically for late-parented walls.
+    -- No-collide the (unparented) frame with the parent it sits in NOW, before the
+    -- next physics tick: an overlapping solid hull would interpenetrate that parent
+    -- and the physics solver would violently shove it away. The frame's Think
+    -- re-checks this periodically in case the parent is parented late.
     wp.NoCollideFrame(f, self)
 end
 

@@ -1,18 +1,20 @@
 -- Collision
 
--- Portal-aware collision for transiting props. A portal is usually mounted flush
--- against a solid wall, so a decent-sized prop jams on it before its centre can
--- cross the plane. While a dynamic prop touches an open
--- teleport-enabled portal we no-collide it with the wall (constraint.NoCollide)
--- so it passes through; the collision frame (linked_portal_frame) keeps it
--- funnelled through the opening. Armed from the portal's trigger Touch (event-
--- driven, cheap). No collidable ghost — clientside can't block server props.
+-- Portal-aware collision for transiting props. A portal is parented to a solid
+-- structure (e.g. a shell) and you cross through an opening in it. The non-player
+-- teleport only fires once a prop's centre crosses the portal plane, so a decent-
+-- sized prop jams on the parent before its centre can get there. While a dynamic
+-- prop touches an open teleport-enabled portal we no-collide it with the parent's
+-- solids (constraint.NoCollide) so it passes through; the collision frame
+-- (linked_portal_frame) keeps it funnelled through the opening. Armed from the
+-- portal's trigger Touch (event-driven, cheap). No collidable ghost — clientside
+-- can't block server props.
 
 if not SERVER then return end
 
 wp.nocollide = wp.nocollide or {}   -- [ent] = { [portal] = { constraints = {} } }
 
--- Is ent something we should pass through the wall for this portal?
+-- Is ent something we should pass through the parent for this portal?
 local function eligible(ent, portal)
     if not IsValid(ent) then return false end
     if ent:IsPlayer() then return false end
@@ -32,13 +34,13 @@ local function eligible(ent, portal)
     return true
 end
 
--- Wall entities a transiting prop passes through: the portal's parent +
+-- Solid entities a transiting prop passes through: the portal's parent +
 -- constraint network + whatever wp-nocollide returns, but only those that opt in
 -- with `ent.PortalNoCollide == true`. Opt-in (default-solid) is deliberate — a
 -- missed flag just jams the prop (recoverable), never drops it into the void.
 -- Never the portal/frame/prop, and only entities with a physics object.
-local function gatherWalls(portal, ent)
-    local walls, seen = {}, {}
+local function gatherParentSolids(portal, ent)
+    local solids, seen = {}, {}
     local function consider(e)
         if not IsValid(e) or seen[e] then return end
         if e == ent or e.WPIsGhost then return end
@@ -46,7 +48,7 @@ local function gatherWalls(portal, ent)
         if cls == "linked_portal_door" or cls == "linked_portal_frame" then return end
         seen[e] = true
         if e.PortalNoCollide == true and IsValid(e:GetPhysicsObject()) then
-            walls[#walls + 1] = e
+            solids[#solids + 1] = e
         end
         -- recurse children regardless: a child may opt in even if the parent didn't
         for _, c in ipairs(e:GetChildren()) do
@@ -68,38 +70,38 @@ local function gatherWalls(portal, ent)
             consider(e)
         end
     end
-    return walls
+    return solids
 end
 
--- Restore the frame<->wall no-collision the unparented frame lost (else its solid
--- hull interpenetrates the wall and the solver shoves it away). Doesn't
--- touch prop<->frame, so transiting props still collide with the frame.
--- Idempotent per wall, so cheap to re-run as the wall set changes late.
+-- Restore the frame<->parent no-collision the unparented frame lost (else its solid
+-- hull interpenetrates the parent and the solver shoves it away). Doesn't touch
+-- prop<->frame, so transiting props still collide with the frame. Idempotent, so
+-- cheap to re-run as the parent changes late.
 function wp.NoCollideFrame(frame, portal)
     if not (IsValid(frame) and IsValid(portal)) then return end
     -- ONLY the portal's parent: Source propagates the NoCollide down its whole
     -- parented subtree, covering every part. Walking the constraint network would
     -- pull in an armed transiting prop (it shows up via logic_collision_pair) and
     -- make the frame wrongly stop bounding it — parent-only avoids that loop.
-    local wall = portal:GetParent()
-    if not IsValid(wall) then return end   -- free-standing portal: no wall to phase
-    frame.WallNoCollides = frame.WallNoCollides or {}
-    if not IsValid(frame.WallNoCollides[wall]) then
-        local c = constraint.NoCollide(frame, wall, 0, 0)
+    local parent = portal:GetParent()
+    if not IsValid(parent) then return end   -- free-standing portal: nothing to phase
+    frame.ParentNoCollides = frame.ParentNoCollides or {}
+    if not IsValid(frame.ParentNoCollides[parent]) then
+        local c = constraint.NoCollide(frame, parent, 0, 0)
         if IsValid(c) then
-            frame.WallNoCollides[wall] = c
+            frame.ParentNoCollides[parent] = c
             frame:DeleteOnRemove(c)
         end
     end
 end
 
--- Pass `ent` through the wall entities of `portal`. Idempotent: a no-op if the
+-- Pass `ent` through `portal`'s parent solids. Idempotent: a no-op if the
 -- pair is already armed, so it's safe to call every Touch tick.
 function wp.ArmNoCollide(portal, ent)
     if not (IsValid(portal) and IsValid(ent)) then return end
 
     -- Already-armed check BEFORE eligible(): the NoCollide registers the prop in
-    -- the wall's constraint network, which would fail eligible()'s contraption
+    -- the parent's constraint network, which would fail eligible()'s contraption
     -- guard on re-arm. Checking armed first keeps that guard on the clean network.
     local recs = wp.nocollide[ent]
     if recs and recs[portal] then return end
@@ -110,8 +112,8 @@ function wp.ArmNoCollide(portal, ent)
     end
 
     local cons = {}
-    for _, w in ipairs(gatherWalls(portal, ent)) do
-        local c = constraint.NoCollide(ent, w, 0, 0)
+    for _, s in ipairs(gatherParentSolids(portal, ent)) do
+        local c = constraint.NoCollide(ent, s, 0, 0)
         if IsValid(c) then
             cons[#cons + 1] = c
         end
@@ -154,7 +156,7 @@ function wp.DisarmAllNoCollide(ent)
 end
 
 -- Disarm everything armed against a portal (it closed, disabled teleport, or was
--- removed) so the wall goes solid again for those props.
+-- removed) so the parent goes solid again for those props.
 function wp.DisarmPortal(portal)
     local victims
     for ent, recs in pairs(wp.nocollide) do

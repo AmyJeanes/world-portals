@@ -52,21 +52,21 @@ function ENT:BuildFrame(width, height, thickness)
     self:SetMoveType(MOVETYPE_NONE)
 
     -- The new physobj defaults to colliding -- constraint.NoCollide fires its
-    -- disable once and never reapplies -- so re-add the frame<->wall no-collide
-    -- or the immovable shadow shoves the wall.
-    if self.WallNoCollides then
-        for _, c in pairs(self.WallNoCollides) do
+    -- disable once and never reapplies -- so re-add the frame<->parent no-collide
+    -- or the immovable shadow shoves the parent.
+    if self.ParentNoCollides then
+        for _, c in pairs(self.ParentNoCollides) do
             if IsValid(c) then c:Remove() end
         end
-        self.WallNoCollides = nil
+        self.ParentNoCollides = nil
     end
     wp.NoCollideFrame(self, self.Portal)
     return true
 end
 
 -- Follow the portal WITHOUT being parented, driving both the entity transform and
--- the physics hull from here each tick. Not parented because the prop<->wall
--- no-collide would disable the prop against the wall's whole parented subtree, so
+-- the physics hull from here each tick. Not parented because the prop<->parent
+-- no-collide would disable the prop against the parent's whole parented subtree, so
 -- a parented frame would be phased the instant a prop armed (sv_collision.lua).
 function ENT:Think()
     local portal = self.Portal
@@ -94,12 +94,12 @@ function ENT:Think()
         end
         self.LastShadowTarget = pos
     end
-    -- Keep the (unparented) hull no-collided with the wall it sits in, so it doesn't
-    -- interpenetrate that wall and shove it away. Low-frequency re-check picks up
-    -- the wall once the portal is parented to it and any parts added later.
+    -- Keep the (unparented) hull no-collided with its parent, so it doesn't
+    -- interpenetrate the parent and shove it away. Low-frequency re-check picks up
+    -- the parent once the portal is parented to it and any parts added later.
     local now = CurTime()
-    if not self.NextWallCheck or now >= self.NextWallCheck then
-        self.NextWallCheck = now + 1
+    if not self.NextParentCheck or now >= self.NextParentCheck then
+        self.NextParentCheck = now + 1
         wp.NoCollideFrame(self, portal)
     end
     self:NextThink(CurTime())

@@ -110,7 +110,7 @@ function ENT:SetupDataTables()
         end
     end)
 
-    -- Restore wall collision if the portal closes/stops teleporting under a still-
+    -- Restore parent collision if the portal closes/stops teleporting under a still-
     -- touching prop (EndTouch only covers the prop leaving).
     self:NetworkVarNotify("Open", function(ent, name, old, new)
         if SERVER and not new then wp.DisarmPortal(ent) end

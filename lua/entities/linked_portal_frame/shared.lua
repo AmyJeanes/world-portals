@@ -6,7 +6,7 @@ ENT.PrintName = "Portal Collision Frame"
 -- A collision-only perimeter frame for a linked_portal_door opening: a 4-slab
 -- multiconvex hull (top/bottom/left/right) leaving the centre hole and the transit
 -- axis open, so a prop crossing the portal is funnelled through the opening while
--- no-collided with the wall (sv_collision.lua). Never drawn; ignores players.
+-- no-collided with the parent (sv_collision.lua). Never drawn; ignores players.
 
 -- Slab dimensions, shared so the client debug overlay matches the server hull.
 ENT.FrameBorder = 4    -- outward border (lip) beyond each opening edge; the prop is bounded by the slab's inner face
