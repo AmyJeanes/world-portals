@@ -109,10 +109,11 @@ function ENT:Touch( ent )
             local phys = ent:GetPhysicsObject()
             if IsValid(phys) then phys:SetVelocityInstantaneous( new_velocity ) end
 
-            -- Arm the exit side now (the prop just emerged into the exit's parent),
-            -- so the handoff is seamless rather than waiting a tick for the exit's
-            -- own Touch to fire. The entry side disarms via its EndTouch.
+            -- Hand off the no-collide explicitly: arm the exit (the prop just emerged
+            -- into its parent) and disarm the entry. Both here, not via EndTouch -- a
+            -- SetPos teleport can skip the entry's EndTouch and leave it armed.
             wp.ArmNoCollide( exit, ent )
+            wp.DisarmNoCollide( ent, self )
             self:TriggerOutput("OnEntityTeleportFromMe", ent)
             exit:TriggerOutput("OnEntityTeleportToMe", ent)
             if store then
@@ -138,8 +139,8 @@ function ENT:Touch( ent )
     end
 end
 
--- Restore parent collision when the prop leaves the doorway. On teleport it's moved
--- out of the trigger, so this disarms the entry side (the exit was armed in Touch).
+-- Restore parent collision when the prop leaves the doorway without teleporting
+-- (a teleport already disarms the entry in Touch). Idempotent if both fire.
 function ENT:EndTouch( ent )
     wp.DisarmNoCollide( ent, self )
 end
