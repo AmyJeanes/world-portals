@@ -112,7 +112,7 @@ function wp.ArmNoCollide(portal, ent)
 
     local cons = {}
     for _, s in ipairs(gatherParentSolids(portal, ent)) do
-        local c = constraint.NoCollide(ent, s, 0, 0)
+        local c = constraint.NoCollide(ent, s, 0, 0, true)
         if IsValid(c) then
             cons[#cons + 1] = c
         end
@@ -120,15 +120,12 @@ function wp.ArmNoCollide(portal, ent)
     recs[portal] = { constraints = cons }
 end
 
--- Restore collision. CRITICAL: removing a logic_collision_pair does NOT re-enable
--- collision (a bare :Remove() ghosts the pair forever) — fire EnableCollisions,
--- then remove next frame (same-frame removal drops the queued input).
+-- Restore collision by removing each pair. They're created with disable_on_remove,
+-- so :Remove() re-enables the collision the pair was suppressing -- no
+-- EnableCollisions input or deferral needed.
 local function releaseConstraints(rec)
     for _, c in ipairs(rec.constraints) do
-        if IsValid(c) then
-            c:Fire("EnableCollisions", "", 0)
-            timer.Simple(0, function() if IsValid(c) then c:Remove() end end)
-        end
+        if IsValid(c) then c:Remove() end
     end
 end
 
