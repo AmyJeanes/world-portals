@@ -109,10 +109,9 @@ function ENT:Touch( ent )
             local phys = ent:GetPhysicsObject()
             if IsValid(phys) then phys:SetVelocityInstantaneous( new_velocity ) end
 
-            -- Hand off the no-collide explicitly: arm the exit (the prop just emerged
-            -- into its parent) and disarm the entry. Both here, not via EndTouch -- a
-            -- SetPos teleport can skip the entry's EndTouch and leave it armed.
-            wp.ArmNoCollide( exit, ent )
+            -- Disarm the entry explicitly -- a SetPos teleport can skip its EndTouch,
+            -- leaving the prop no-collided against the entry's parent. The exit side
+            -- arms via its own Touch as the prop emerges through it.
             wp.DisarmNoCollide( ent, self )
             self:TriggerOutput("OnEntityTeleportFromMe", ent)
             exit:TriggerOutput("OnEntityTeleportToMe", ent)
