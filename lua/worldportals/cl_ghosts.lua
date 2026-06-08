@@ -1,19 +1,14 @@
 -- Ghosts
 
 -- Continuous entity rendering across portals ("portal ghosts"). An entity
--- straddling a portal is otherwise cut off at the opening, so we draw it as two
--- clipped halves: the real entity (entry-forward half) and a clientside ghost at
--- the mirror-transformed exit pose (exit-forward half). The 180-yaw mirror makes
--- them tile, seam on the portal plane. Pure client-side visual, decoupled from
--- the teleport (straddling is a per-frame geometry test).
---
--- Rigid props pose via SetPos/SetAngles; skeletal entities (ragdolls/NPCs/
--- players, incl. the local player) pose bone-by-bone (copyBonesThroughPortal),
--- with a held weapon mirrored as a second sub-ghost.
+-- straddling a portal would be cut off at the opening, so we spawn a clientside
+-- ghost at the mirror-transformed exit pose and clip both halves to the portal
+-- plane -- the real entity keeps the entry side, the ghost the exit side -- so
+-- they read as one body. Pure client-side, decoupled from the teleport. Rigid
+-- props pose via SetPos/SetAngles; skeletal entities (ragdolls/NPCs/players)
+-- pose bone-by-bone.
 
 local ENABLE_DEFAULT = "1"
--- Hold the ConVar objects (read on the per-frame Think); GetConVar's hash lookup
--- per call is the cost, :GetBool() on the held object is cheap.
 local cvGhosts = CreateClientConVar("worldportals_ghosts", ENABLE_DEFAULT, true, false,
     "World Portals - render continuous clipped ghosts of entities straddling a portal", 0, 1)
 
@@ -32,14 +27,12 @@ local FACE_OFFSET   = 5
 
 wp.ghosts = wp.ghosts or {}   -- [entity] = record
 
--- Is this an entity we render ghosts for? A NoDraw'd prop is skipped by default
--- (hidden for a reason) but a consumer can opt it back in via wp-shouldghost
--- (e.g. a prop the consumer hides only in the local realm but still wants ghosted).
+-- A NoDraw'd prop is skipped by default (hidden for a reason) but a consumer can
+-- opt it back in via wp-shouldghost (e.g. a prop the consumer hides only in the
+-- local realm but still wants ghosted).
 local function isCandidate(ent)
     if not IsValid(ent) then return false end
     if ent.WPIsGhost then return false end
-    -- Per-player opt-out for one's own ghost (short-circuits the convar read for
-    -- the common non-local candidates).
     if ent == LocalPlayer() and not cvGhostsSelf:GetBool() then
         return false
     end
@@ -47,8 +40,6 @@ local function isCandidate(ent)
     -- the ragdoll), so ghosting it draws a phantom over the corpse. The ragdoll
     -- itself still ghosts normally.
     if ent:IsPlayer() and not ent:Alive() then return false end
-    -- prop_physics, ragdoll, NPC, or player (incl. the local player). Also
-    -- excludes our own ghosts (plain ClientsideModels, none of these).
     if ent:GetClass() ~= "prop_physics" and not ent:IsRagdoll()
         and not ent:IsNPC() and not ent:IsPlayer() then return false end
     if ent:GetNoDraw() then
@@ -65,9 +56,9 @@ end
 
 local ANGLE_ZERO = Angle()
 
--- The transform the original is actually RENDERED at — glues the ghost to the
--- visible prop. GetRenderOrigin/Angles picks up cl_renderfollow.lua's render-
--- follow when active; nil falls back to GetPos/GetAngles.
+-- GetRenderOrigin/Angles picks up cl_renderfollow.lua's render-follow when active
+-- (gluing the ghost to where the prop actually draws); nil falls back to
+-- GetPos/GetAngles.
 local function renderTransform(ent)
     return ent:GetRenderOrigin() or ent:GetPos(), ent:GetRenderAngles() or ent:GetAngles()
 end
@@ -77,7 +68,6 @@ local function renderCenter(ent)
     return LocalToWorld(ent:OBBCenter(), ANGLE_ZERO, rpos, rang)
 end
 
--- Mirror the original's current render transform through the pair onto the ghost.
 local function poseGhost(rec)
     local rpos, rang = renderTransform(rec.ent)
     wp.TransformPortalPosInto(rec.posBuf, rpos, rec.portal, rec.exit)
@@ -114,14 +104,11 @@ local function straddles(ent, portal)
     local y0, y1 = mins.y - OPENING_SLACK, maxs.y + OPENING_SLACK
     local z0, z1 = mins.z - OPENING_SLACK, maxs.z + OPENING_SLACK
 
-    -- Fast path: the OBB centre projects inside the opening.
     local lc = portal:WorldToLocal(center)
     if lc.y >= y0 and lc.y <= y1 and lc.z >= z0 and lc.z <= z1 then
         return true
     end
 
-    -- Robust path: clip the OBB's edges to the portal plane and test the
-    -- crossing points against the opening.
     local rpos, rang = renderTransform(ent)
     local mn, mx = ent:OBBMins(), ent:OBBMaxs()
     local i = 0
@@ -352,8 +339,7 @@ local function makeWeaponOriginalOverride(rec)
     end
 end
 
--- Tear down weapon tracking: restore the real weapon's RenderOverride and remove
--- the weapon ghost. Safe to call when no weapon is tracked.
+-- Safe to call when no weapon is tracked.
 local function clearWeapon(rec)
     if IsValid(rec.weaponGhost) then rec.weaponGhost:Remove() end
     rec.weaponGhost = nil
@@ -365,10 +351,9 @@ local function clearWeapon(rec)
     rec.weaponSavedOverride = nil
 end
 
--- Keep the weapon sub-ghost in step with the NPC/player's current active weapon.
--- Lazily (re)builds the weapon ghost when the held model changes, installs the
--- entry clip on the real weapon, and parks the ghost root at the transformed
--- weapon pose for culling (its bones are placed in world space by the override).
+-- Keep the weapon sub-ghost in step with the NPC/player's active weapon. The
+-- ghost root is parked at the transformed weapon pose only for culling -- its
+-- bones are placed in world space by the override.
 local function updateWeapon(rec)
     local ent = rec.ent
     if not (ent:IsNPC() or ent:IsPlayer()) then return end
@@ -451,8 +436,6 @@ local function startStraddle(ent, portal)
         portal = portal,
         exit = exit,
         ghost = ghost,
-        -- A ragdoll, NPC or player is skeletal: the ghost's pose comes from per-bone
-        -- matrix copy (copyBonesThroughPortal) rather than the rigid SetPos/SetAngles.
         skeletal = ent:IsRagdoll() or ent:IsNPC() or ent:IsPlayer(),
         translucent = isTranslucent(ent),
         lastSeen = SysTime(),
@@ -560,8 +543,6 @@ hook.Add("Think", "WorldPortals_Ghosts", function()
         end
     end
 
-    -- Expire records not seen this frame once the grace window passes; also
-    -- tear down anything that went invalid.
     local expired
     for ent, rec in pairs(wp.ghosts) do
         if not IsValid(ent) or not IsValid(rec.portal) or not IsValid(rec.ghost) then
