@@ -1,7 +1,9 @@
 -- Teleport
 
 -- Predicted player teleport (SetupMove): server for everyone, client for
--- LocalPlayer, so the local view stays in lockstep without the snapshot.
+-- LocalPlayer. Both realms run the teleport on the same move command in the same
+-- tick, so the local view moves the instant you cross instead of waiting ~RTT for
+-- the server's snapshot to confirm it (client-side prediction).
 -- Non-player entities go through ENT:Touch.
 local ANGLE_VR_YAW_REF = Angle(0, 0, 0)
 -- Slack in front of the plane that still fires this tick - catches a slow
@@ -28,11 +30,10 @@ local function predictPlayerTeleport(ply, mv, cmd)
     local origin = mv:GetOrigin()
     local frameTime = FrameTime()
 
-    -- Two crossing points: the EYE (also the anti-cull front guard - it must
-    -- stay in front of portal:GetPos() or the stencil culls) and the hull CENTRE
-    -- (also drives the face bounds). Fire when EITHER crosses. They differ only
-    -- by 28*forward.z, so walls are unchanged and only floor portals gain the
-    -- centre trigger (an eye-only test can't fire while you stand on one).
+    -- Two crossing points: the player's eye (the normal case) and the hull
+    -- centre, so a portal angled away from the eyeline (e.g. on the floor) can be
+    -- entered without putting your eye right up to it; fire when EITHER crosses.
+    -- They differ only by 28*forward.z, so walls are unchanged, only floors gain it.
     local eyePos = ply:EyePos()
     local nextEyeX = eyePos.x + velocity.x * frameTime
     local nextEyeY = eyePos.y + velocity.y * frameTime
@@ -101,8 +102,7 @@ local function predictPlayerTeleport(ply, mv, cmd)
         local newVel = wp.TransformPortalVector(velocity, portal, exit)
         local newAng = wp.TransformPortalAngle(oldEyeAng, portal, exit)
 
-        -- Keep eyeline level when teleporting through a roll (matches the
-        -- prior server-side Touch math).
+        -- Keep eyeline level when teleporting through a roll.
         local height = ply:OBBMaxs().z
         local upRot = Vector(0, 0, height)
         upRot:Rotate(Angle(0, 0, newAng.r))
@@ -185,6 +185,10 @@ local function predictPlayerTeleport(ply, mv, cmd)
         if ply:GetMoveType() == MOVETYPE_NOCLIP then
             ply.wpNoclipTpAt = CurTime()
         end
+        -- One teleport per tick: this returns from the whole scan. `goto cont`
+        -- above is the loop's "continue" (Lua has no continue keyword); `do return
+        -- end` wraps the return so the `::cont::` label can follow it (a bare
+        -- return must be the last statement in its block).
         do return end
         ::cont::
     end
@@ -240,13 +244,13 @@ function WorldPortals_TraceLine(data)
         if localHitPos.y > mins.y and localHitPos.y < maxs.y
         and localHitPos.z > mins.z and localHitPos.z < maxs.z
         and hook.Call("wp-trace", GAMEMODE, portal.Entity)~=false then
-            local angle = wp.TransformPortalAngle( trace.Normal:Angle(), portal.Entity, portal.Entity:GetExit() ):Forward()
+            local dir = wp.TransformPortalAngle( trace.Normal:Angle(), portal.Entity, portal.Entity:GetExit() ):Forward()
             local startPos = wp.TransformPortalPos( portal.HitPos, portal.Entity, portal.Entity:GetExit() )
 
             local length = data.start:Distance(data.endpos)
             local usedLength = portal.Distance
 
-            local endPos = angle
+            local endPos = dir
             endPos:Mul(length + 32 - usedLength)
             endPos:Add(startPos)
             
@@ -269,10 +273,9 @@ function WorldPortals_TraceLine(data)
                 mask = data.mask,
                 filter = newFilter,
             })
-            -- Keep the original StartPos (not the exit-side start): consumers
-            -- expect StartPos == the start they asked for (the camera tool
-            -- spawned inside the portal otherwise). HitPos/Entity/Normal stay
-            -- exit-side, so see-through traces are unchanged.
+            -- Report the StartPos the caller asked for, not the exit-side start
+            -- (else e.g. the camera tool spawns inside the portal). HitPos/Normal
+            -- stay exit-side, so see-through traces are unchanged.
             tr.StartPos = trace.StartPos
             return tr
         end
