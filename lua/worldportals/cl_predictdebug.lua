@@ -5,7 +5,7 @@
 -- so a paused frame shows what the prediction did. Records run at teleport rate
 -- (RecordTeleportEvent from sh_teleport.lua, RecordNetTeleport from the entity net
 -- receive); the render is gated on the cvar. Reads the predict-lerp state set in
--- cl_teleport.lua / sh_teleport.lua.
+-- cl_viewcorrections.lua / sh_teleport.lua.
 CreateClientConVar("worldportals_debug_predict", "0", true, false, "Show predicted player teleport debug HUD", 0, 1)
 
 local recentTeleports = {}

@@ -1,4 +1,4 @@
--- PVS & pairing
+-- Render
 
 -- Add exit portal visleafs to server's potentially visible set
 hook.Add( "SetupPlayerVisibility", "WorldPortals_AddPVS", function( ply, ent )

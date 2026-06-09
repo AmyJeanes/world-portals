@@ -8,7 +8,7 @@
 -- drift). SysTime, not CurTime (CurTime in SetupMove is the future tick time).
 local PREDICT_TIMEOUT = 0.5
 
--- Window for stripping the engine's post-teleport stair smoothing (see CalcView).
+-- Window for stripping the engine's post-teleport stair smoothing.
 local STAIR_STRIP_TIMEOUT = 0.5
 
 -- Predict-lerp diagnostic counters, read by the debug HUD (cl_predictdebug.lua).
@@ -16,8 +16,8 @@ wp.predictArmCount = wp.predictArmCount or 0
 wp.predictDisarmReasons = wp.predictDisarmReasons or {timeout=0}
 
 -- Arm the roll fade (wp.rotating) + stair-strip window (wp.stairStripAt) for a
--- local teleport. Called from the prediction branch (listen server) and from
--- the SP net handler. NOT the predict-lerp shift — that's prediction/ping-only.
+-- local teleport, from the listen-server predict path and the SP net handler.
+-- NOT the predict-lerp shift - that's prediction/ping-only.
 function wp.ArmTeleportView(newAng)
     if newAng.r ~= 0 then
         wp.rotating = newAng.r
@@ -36,7 +36,7 @@ local function getPredictDelta(ply)
     end
     local netPos = ply:GetNetworkOrigin()
     -- Sanity: if NetOrigin is still nearer oldPos than predictedPos the snapshot
-    -- hasn't caught up — shifting would pull the camera backward, so skip.
+    -- hasn't caught up - shifting would pull the camera backward, so skip.
     if wp.predictedOldPos then
         local distToNew = (netPos - wp.predictedPos):LengthSqr()
         local distToOld = (netPos - wp.predictedOldPos):LengthSqr()
@@ -49,25 +49,26 @@ local function getPredictDelta(ply)
     return netPos - ply:GetPos()
 end
 
--- View roll fade after a portal that introduced roll. wp.rotating is set
--- locally from the predicted teleport in sh_teleport.lua (no net round-trip).
+-- Combines three post-teleport view corrections: the predict-lerp shift, the
+-- stair-strip, and the roll fade. wp.rotating (the roll) is set locally from the
+-- predicted teleport in sh_teleport.lua, no net round-trip.
 hook.Add("CalcView", "WorldPortals_View", function(ply, pos, ang, fov)
     -- These corrections derive from the player's own eye/body, so only apply to
     -- the player's first-person view. Bail when rendering from another entity
-    -- (camera/monitor/spectate). Global GetViewEntity() = the current render
-    -- reality, not Player:GetViewEntity()'s networked value.
+    -- (camera/monitor/spectate).
     if GetViewEntity() ~= ply then
         wp.stairLeak = nil
         return
     end
     local delta = getPredictDelta(ply)
     local newOrigin = delta and (pos + delta) or nil
-    -- Strip the engine's SmoothViewOnStairs eye-Z easing, which reads a grounded
-    -- portal exit as one huge stair step (the "jump on exit"). (pos.z -
-    -- EyePos().z) is exactly the leaked offset (EyePos has no stair smoothing),
-    -- so it self-measures. Stashed in wp.stairLeak for CalcViewModelView. Gated
-    -- on its own window (both realms, unlike the predict shift), so normal
-    -- stair-stepping keeps its smoothing.
+    -- The engine eases the eye's Z when you step up stairs or off a ledge
+    -- (SmoothViewOnStairs) so the camera doesn't jolt - but a grounded portal
+    -- exit's big Z change trips it as one huge step on landing, so we strip it,
+    -- same idea as the predict-lerp shift above. (pos.z - EyePos().z) is exactly
+    -- the leaked offset (EyePos isn't stair-smoothed), so it self-measures;
+    -- stashed in wp.stairLeak for CalcViewModelView. Its own window gates it (both
+    -- realms, unlike the predict shift) so normal stairs keep their smoothing.
     if wp.stairStripAt and SysTime() - wp.stairStripAt < STAIR_STRIP_TIMEOUT then
         local base = newOrigin or pos
         wp.stairLeak = pos.z - ply:EyePos().z
@@ -93,16 +94,13 @@ hook.Add("CalcView", "WorldPortals_View", function(ply, pos, ang, fov)
     end
 end)
 
--- Same delta for the viewmodel so the physgun/hands ride with the camera
--- (viewmodel pos is computed from ply:EyePos(), which still lerps otherwise).
+-- Same delta for the viewmodel so the physgun/hands ride with the camera.
 hook.Add("CalcViewModelView", "WorldPortals_ViewModel", function(weapon, vm, oldPos, oldAng, pos, ang)
     local ply = LocalPlayer()
     -- Same own-view restriction as CalcView.
     if GetViewEntity() ~= ply then return end
     local delta = getPredictDelta(ply)
-    -- Two corrections mirroring CalcView: predict-lerp shift (nil in SP) and the
-    -- stair strip (both realms, set by CalcView which runs first). Bail only when
-    -- neither applies — a nil-delta early return dropped the stair strip in SP.
+    -- Check both: a delta-only bail drops the stair strip in SP (nil delta there).
     if not delta and not wp.stairLeak then return end
     local origin = delta and (pos + delta) or pos
     if wp.stairLeak then

@@ -1,4 +1,4 @@
--- Debug overlay
+-- Debug
 
 CreateClientConVar("worldportals_debug", "0", true, false, "World Portals - Debug overlay (0=off, 1=clipped to visible, 2=rendered only, 3=all incl. culled)", 0, 3)
 
@@ -47,13 +47,13 @@ hook.Add("HUDPaint", "WorldPortals_Debug", function()
     local list, count = wp.GetFrameRenderedList()
 
     -- Pass 1: draw every rendered chain by projecting through the camera the
-    -- renderer used (it already did the recursion/culls — we just visualise).
+    -- renderer used (it already did the recursion/culls - we just visualise).
     -- Mode 1 = "clipped to visible": orange polygons drawn as the
     --          cumulative-ancestor-clipped shape (cumPoly) so they don't
     --          escape the green parent. Faithful "what the player sees
     --          through the stencil chain".
     -- Mode 2 = "rendered only": orange polygons drawn as the portal's
-    --          full screen quad — escapes the green, shows where the
+    --          full screen quad - escapes the green, shows where the
     --          render actually occupies in NDC. No yellow/red.
     -- Mode 3 = "all incl. culled": same as mode 2 plus yellow (overlap-
     --          culled at depth>1) and red (top-level shouldrender failed).
@@ -79,7 +79,7 @@ hook.Add("HUDPaint", "WorldPortals_Debug", function()
         end
     end
 
-    -- Yellow outlines for overlap-culled chains (mode 3 only) — would
+    -- Yellow outlines for overlap-culled chains (mode 3 only) - would
     -- render geometrically but ancestor stencil hides them entirely.
     if mode == 3 then
         local culledList, culledCount = wp.GetFrameCulledList()
