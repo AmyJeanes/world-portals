@@ -38,7 +38,7 @@ wp._renderView = {
     zfar = nil,
 }
 
-CreateClientConVar("worldportals_enabled", "1", true, false, "Enable World Portals rendering. When 0, portals don't render and entity Draw bails — frees the per-frame engine RenderView allocations the recursion produces.", 0, 1)
+CreateClientConVar("worldportals_enabled", "1", true, false, "Enable World Portals rendering. When 0, portals don't render and entity Draw bails - frees the per-frame engine RenderView allocations the recursion produces.", 0, 1)
 CreateClientConVar("worldportals_recurse_depth", "2", true, false, "World Portals - Maximum portal recursion depth", 1, 9)
 
 local enabled = true
@@ -87,7 +87,7 @@ local function quantizePos(v)
 end
 
 -- Identifies which RT a (depth, camera, portal) triple maps to. At d=1 the
--- camera is omitted (only one chain — the player view — so the RT stays
+-- camera is omitted (only one chain - the player view - so the RT stays
 -- stable across frames). At d>1 the camera is folded in so sibling chains
 -- with different cameras get distinct RTs and identical ones dedup.
 local function getChainKey(depth, camPos, portal)
@@ -160,7 +160,7 @@ local function cachePortalScalars(p)
 end
 wp.CachePortalScalars = cachePortalScalars
 
--- Static scratch buffers — mutated per call but never retained by engine.
+-- Static scratch buffers - mutated per call but never retained by engine.
 local EXIT_ANG_BUF = Angle()
 local EXIT_ANG_OFF_BUF = Angle()
 local VECTOR_ORIGIN = Vector()
@@ -267,7 +267,7 @@ local function getPooledRT(chainKey, width, height)
     end
 
     -- Evict LRU, but never a current-frame entry (still in flight). If
-    -- everything's current we're over capacity — skip the render.
+    -- everything's current we're over capacity - skip the render.
     local lruKey, lruFrame
     for k, e in pairs(rtPool) do
         if e.lastFrame < frameCounter and (not lruKey or e.lastFrame < lruFrame) then
@@ -417,7 +417,7 @@ function wp.shouldrender( portal, camOrigin, camAngle, camFOV )
         end
     end
 
-    -- Back-face cull. Use the thick-portal back-plane only at d=1 — at d>1
+    -- Back-face cull. Use the thick-portal back-plane only at d=1 - at d>1
     -- the inner camera lands inside the exit's thick volume by construction
     -- and would bounce-recurse forever.
     local thickness = portal:GetThickness()
@@ -552,7 +552,7 @@ end
 -- Project a portal's visible-face quad through a camera into screen pixel
 -- space, near-plane-clipped. Returns a flat polygon (0, 6, 8, or 10 entries).
 -- camFov is the rendered horizontal FOV (already aspect-adjusted by the
--- engine — don't re-apply Hor+ here).
+-- engine - don't re-apply Hor+ here).
 --
 -- Single-slot cache for the camera basis: renderportals iterates many
 -- portals per level sharing one plyAngle, so subsequent calls skip the
@@ -1022,7 +1022,7 @@ end )
 
 -- While a portal's exit-view renders into its RT (wp.drawing), draw the local
 -- player's model so your body shows up in portals (e.g. a portal whose pair points
--- back at you, or recursive views). Outside that -- the normal eye view -- this
+-- back at you, or recursive views). Outside that - the normal eye view - this
 -- returns nil, so the engine keeps first-person bodiless as usual.
 local cvShowSelf = CreateClientConVar("worldportals_show_self", "1", true, false, "Show your own body inside portals", 0, 1)
 hook.Add( "ShouldDrawLocalPlayer", "WorldPortals_Render", function()

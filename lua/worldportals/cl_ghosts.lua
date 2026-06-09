@@ -3,7 +3,7 @@
 -- Continuous entity rendering across portals ("portal ghosts"). An entity
 -- straddling a portal would be cut off at the opening, so we spawn a clientside
 -- ghost at the mirror-transformed exit pose and clip both halves to the portal
--- plane -- the real entity keeps the entry side, the ghost the exit side -- so
+-- plane - the real entity keeps the entry side, the ghost the exit side - so
 -- they read as one body. Pure client-side, decoupled from the teleport. Rigid
 -- props pose via SetPos/SetAngles; skeletal entities (ragdolls/NPCs/players)
 -- pose bone-by-bone.
@@ -82,7 +82,7 @@ local sCX = {0, 0, 0, 0, 0, 0, 0, 0}
 local sCY = {0, 0, 0, 0, 0, 0, 0, 0}
 local sCZ = {0, 0, 0, 0, 0, 0, 0, 0}
 
--- Does ent's bounds cross the portal plane within the opening? Conservative -- a
+-- Does ent's bounds cross the portal plane within the opening? Conservative - a
 -- near-miss just makes a fully-clipped, invisible ghost.
 local function straddles(ent, portal)
     local pos = portal:GetPos()
@@ -164,7 +164,7 @@ local function updatePlanes(rec)
     if xao.p ~= 0 or xao.y ~= 0 or xao.r ~= 0 then
         xfwd:Rotate(xao)
     end
-    -- ExitPosOffset is defined in the parent's local space -- rotate it to world.
+    -- ExitPosOffset is defined in the parent's local space - rotate it to world.
     local xpo = exit:GetExitPosOffset()
     local xparent = exit:GetParent()
     if IsValid(xparent) then
@@ -239,7 +239,7 @@ local function copyBonesThroughPortal(rec, src, ghost)
     -- The through-portal transform is the same for every bone, so compose it once
     -- as exit-frame * yaw180 * entry-frame^-1 (the WorldToLocal -> mirror ->
     -- LocalToWorld pipeline of TransformPortalPos) and reduce each bone to one
-    -- multiply -- no per-bone transform math or translation/angle/scale allocs.
+    -- multiply - no per-bone transform math or translation/angle/scale allocs.
     local exit = rec.exit
     local offset = exit:GetExitPosOffset()
     local xparent = exit:GetParent()
@@ -269,7 +269,7 @@ local function localGhostIsCutaway(rec)
     return EyePos():DistToSqr(camAtExit) < CUTAWAY_DIST_SQR
 end
 
--- Let a consumer veto drawing this ghost in the current pass — for an exit in a
+-- Let a consumer veto drawing this ghost in the current pass - for an exit in a
 -- region hidden from the open world (e.g. an interior tucked in the skybox), it must
 -- draw only in that region's portal RT, not the main scene. Per-draw, NOT cached
 -- (the answer differs between passes within one frame).
@@ -351,7 +351,7 @@ local function clearWeapon(rec)
 end
 
 -- Keep the weapon sub-ghost in step with the NPC/player's active weapon. The
--- ghost root is parked at the transformed weapon pose only for culling -- its
+-- ghost root is parked at the transformed weapon pose only for culling - its
 -- bones are placed in world space by the override.
 local function updateWeapon(rec)
     local ent = rec.ent
@@ -393,7 +393,7 @@ local function updateWeapon(rec)
 end
 
 -- Install our entry-plane clip on the original, chaining any pre-existing
--- RenderOverride (a consumer's) so it still runs -- just clipped.
+-- RenderOverride (a consumer's) so it still runs - just clipped.
 local function ensureOriginalOverride(rec)
     local ent = rec.ent
     if ent.RenderOverride ~= rec.originalOverride then
@@ -464,7 +464,7 @@ local function updateStraddle(rec, now)
     rec.exit = exit
 
     -- A change in translucency flips which render pass the ghost belongs to,
-    -- which is baked in at ClientsideModel creation -- rebuild on change.
+    -- which is baked in at ClientsideModel creation - rebuild on change.
     if isTranslucent(rec.ent) ~= rec.translucent then return false end
 
     updatePlanes(rec)
@@ -592,7 +592,7 @@ hook.Add("EntityRemoved", "WorldPortals_Ghosts", function(ent)
 end)
 
 -- Authoritative ghost pose, after every Think (so cl_renderfollow.lua's render-follow
--- has finalized the original's transform) and right before the scene draws — keeps
+-- has finalized the original's transform) and right before the scene draws - keeps
 -- the ghost glued even at extreme loop speeds.
 hook.Add("PreDrawOpaqueRenderables", "WorldPortals_GhostPose", function(_, skybox)
     if skybox then return end

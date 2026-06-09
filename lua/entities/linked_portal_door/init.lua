@@ -56,7 +56,7 @@ function ENT:KeyValue( key, value )
     end
 end
 
--- Teleportation for non-player entities (props/NPCs/ragdolls) only — players go
+-- Teleportation for non-player entities (props/NPCs/ragdolls) only - players go
 -- through the predicted SetupMove path in sh_teleport.lua.
 function ENT:Touch( ent )
     if (not self:GetOpen()) or (not self:GetEnableTeleport()) then return end
@@ -68,7 +68,7 @@ function ENT:Touch( ent )
     -- Don't teleport or phase a prop that's part of the contraption this portal rides
     -- on. Skip the check for an already-armed prop: its pass-through NoCollide is
     -- itself a constraint, so the prop self-registers in the parent's network and
-    -- would wrongly match here -- yet it armed only after passing this check clean.
+    -- would wrongly match here - yet it armed only after passing this check clean.
     if IsValid( self:GetParent() ) and not (wp.nocollide[ent] and wp.nocollide[ent][self]) then
         for _,v in pairs( constraint.GetAllConstrainedEntities( self:GetParent() ) ) do
             if v == ent then return end
@@ -109,7 +109,7 @@ function ENT:Touch( ent )
             local phys = ent:GetPhysicsObject()
             if IsValid(phys) then phys:SetVelocityInstantaneous( new_velocity ) end
 
-            -- Disarm the entry explicitly -- a SetPos teleport can skip its EndTouch,
+            -- Disarm the entry explicitly - a SetPos teleport can skip its EndTouch,
             -- leaving the prop no-collided against the entry's parent. The exit side
             -- arms via its own Touch as the prop emerges through it.
             wp.DisarmNoCollide( ent, self )

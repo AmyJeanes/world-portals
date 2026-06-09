@@ -4,7 +4,7 @@
 -- LocalPlayer, so the local view stays in lockstep without the snapshot.
 -- Non-player entities go through ENT:Touch.
 local ANGLE_VR_YAW_REF = Angle(0, 0, 0)
--- Slack in front of the plane that still fires this tick — catches a slow
+-- Slack in front of the plane that still fires this tick - catches a slow
 -- creeper whose next, accelerated tick would step over the plane.
 local CROSS_SKIN = 2
 -- Noclip discards the mirrored exit velocity (FullNoClipMove rederives it from
@@ -28,7 +28,7 @@ local function predictPlayerTeleport(ply, mv, cmd)
     local origin = mv:GetOrigin()
     local frameTime = FrameTime()
 
-    -- Two crossing points: the EYE (also the anti-cull front guard — it must
+    -- Two crossing points: the EYE (also the anti-cull front guard - it must
     -- stay in front of portal:GetPos() or the stencil culls) and the hull CENTRE
     -- (also drives the face bounds). Fire when EITHER crosses. They differ only
     -- by 28*forward.z, so walls are unchanged and only floor portals gain the
@@ -65,7 +65,7 @@ local function predictPlayerTeleport(ply, mv, cmd)
         -- Re-teleport guard: the eye must be in front of the plane to fire, so
         -- the exit (the pair are each other's exits) doesn't immediately re-fire
         -- and bounce the player. Thick portals allow firing back to the cull
-        -- plane so you can re-cross their walkable volume — except in noclip,
+        -- plane so you can re-cross their walkable volume - except in noclip,
         -- where the un-mirrored velocity would just re-fire the bounce.
         local thickness = portal:GetThickness()
         local backLimit = (thickness > 0 and ply:GetMoveType() ~= MOVETYPE_NOCLIP) and -thickness or 0
@@ -153,7 +153,7 @@ local function predictPlayerTeleport(ply, mv, cmd)
                 net.WriteAngle(newAng)
             net.Broadcast()
         else
-            -- CLIENT (LocalPlayer), every pass — first-time AND resim. The hook
+            -- CLIENT (LocalPlayer), every pass - first-time AND resim. The hook
             -- (and the mv re-sync below folding a consumer relocation back in)
             -- must re-run each resim or the player reverts to the raw transform
             -- for the unacked window. Consumers' wp-teleport handlers must be

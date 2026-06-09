@@ -51,8 +51,8 @@ function ENT:BuildFrame(width, height, thickness)
     phys:SetMass(50000)
     self:SetMoveType(MOVETYPE_NONE)
 
-    -- The new physobj defaults to colliding -- constraint.NoCollide fires its
-    -- disable once and never reapplies -- so re-add the frame<->parent no-collide
+    -- The new physobj defaults to colliding - constraint.NoCollide fires its
+    -- disable once and never reapplies - so re-add the frame<->parent no-collide
     -- or the immovable shadow shoves the parent.
     if self.ParentNoCollides then
         for _, c in pairs(self.ParentNoCollides) do

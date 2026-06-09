@@ -14,7 +14,7 @@ local RENDER_BLEND_TIME  = 0.15  -- ease back to interpolation over this long on
 
 -- Record each entity teleport and engage the follow on a rapid pair. Reacts to
 -- wp-teleport (fired client-side from the portal's WorldPortals_Teleport net
--- receive); players are excluded -- SetRenderOrigin no-ops the local player and
+-- receive); players are excluded - SetRenderOrigin no-ops the local player and
 -- remote players don't loop.
 hook.Add("wp-teleport", "WorldPortals_RenderFollow", function(_, ent)
     if not IsValid(ent) or ent:IsPlayer() then return end

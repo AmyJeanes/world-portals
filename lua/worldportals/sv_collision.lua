@@ -35,7 +35,7 @@ end
 
 -- What a transiting prop may phase through: the portal's parent +
 -- constraint network + whatever wp-nocollide returns, but only those that opt in
--- with `ent.PortalNoCollide == true`. Opt-in (default-solid) is deliberate — a
+-- with `ent.PortalNoCollide == true`. Opt-in (default-solid) is deliberate - a
 -- missed flag just jams the prop (recoverable), never drops it into the void.
 -- Never the portal/frame/prop, and only entities with a physics object.
 local function gatherParentSolids(portal, ent)
@@ -74,14 +74,14 @@ end
 
 -- The frame's solid hull overlaps the parent (both occupy the doorway), so without a
 -- no-collide between them the physics solver shoves the parent away. Maintain that
--- frame<->parent no-collide. Idempotent, so safe to re-run -- BuildFrame recreates the
+-- frame<->parent no-collide. Idempotent, so safe to re-run - BuildFrame recreates the
 -- physobj and orphans the old one, and the parent can appear late.
 function wp.NoCollideFrame(frame, portal)
     if not (IsValid(frame) and IsValid(portal)) then return end
     -- ONLY the portal's parent: Source propagates the NoCollide down its whole
     -- parented subtree, covering every part. Walking the constraint network would
     -- pull in an armed transiting prop (it shows up via logic_collision_pair) and
-    -- make the frame wrongly stop bounding it — parent-only avoids that loop.
+    -- make the frame wrongly stop bounding it - parent-only avoids that loop.
     local parent = portal:GetParent()
     if not IsValid(parent) then return end   -- free-standing portal: nothing to phase
     frame.ParentNoCollides = frame.ParentNoCollides or {}
@@ -95,7 +95,7 @@ function wp.NoCollideFrame(frame, portal)
 end
 
 -- Arm the pass-through for `ent`: no-collide it with the portal's parent solids so
--- it phases through instead of jamming on the parent. Idempotent -- a no-op if the
+-- it phases through instead of jamming on the parent. Idempotent - a no-op if the
 -- pair is already armed, so it's safe to call every Touch tick.
 function wp.ArmNoCollide(portal, ent)
     if not (IsValid(portal) and IsValid(ent)) then return end
@@ -169,7 +169,7 @@ end
 hook.Add("EntityRemoved", "WorldPortals_Collision", function(ent)
     -- The removed entity itself was being passed through something.
     if wp.nocollide[ent] then wp.DisarmAllNoCollide(ent) end
-    -- The removed entity was a portal -- disarm everything passing through it.
+    -- The removed entity was a portal - disarm everything passing through it.
     if ent:GetClass() == "linked_portal_door" then wp.DisarmPortal(ent) end
 end)
 
