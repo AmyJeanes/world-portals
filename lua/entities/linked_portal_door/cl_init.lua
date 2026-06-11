@@ -9,7 +9,10 @@ function ENT:DrawPortal(exitPortal)
         render.Model({model = self:GetModel(), pos = self:LocalToWorld(self:GetModelPos()), angle = self:LocalToWorldAngles(self:GetModelAng())})
         render.ModelMaterialOverride( nil )
     elseif self:GetThickness() == 0 or hook.Call("wp-allowthickportal", GAMEMODE, self, exitPortal)==false then
-        render.DrawQuadEasy( self:GetPos() -( self:GetForward() * 5 ), self:GetForward(), self:GetWidth(), self:GetHeight(), color_black, self:GetAngles().roll )
+        -- Draw the face at the front of the render geometry (recessed for an inverted
+        -- portal), matching the cull poly and the box/inverted stencils.
+        local fo = (self.RenderMin and self.RenderMax) and math.max(self.RenderMin.x, self.RenderMax.x) or 0
+        render.DrawQuadEasy( self:GetPos() + self:GetForward() * fo, self:GetForward(), self:GetWidth(), self:GetHeight(), color_black, self:GetAngles().roll )
     elseif self:GetInverted() then
         for _,quad in ipairs(self.RenderQuads) do
             render.DrawQuad(self:LocalToWorld(quad[1]), self:LocalToWorld(quad[2]), self:LocalToWorld(quad[3]), self:LocalToWorld(quad[4]), color_black)

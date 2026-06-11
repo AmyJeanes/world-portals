@@ -117,6 +117,31 @@ local function getChainKey(depth, camPos, portal)
     return key
 end
 
+-- DECISION key for frameShouldRenderCache, its only user. Unlike getChainKey (RT
+-- allocation + chain dedup, camera-independent at d=1 for portal:SetTexture
+-- stability), this ALWAYS folds the camera in, so a second d=1 view in the same
+-- frame - a TARDIS scanner, a security camera/monitor - gets its own render
+-- decision instead of reusing the eye view's. Own per-portal key cache so it
+-- never clobbers getChainKey's.
+local function getDecisionKey(depth, camPos, portal)
+    if not camPos then return getChainKey(depth, nil, portal) end
+    local qx, qy, qz = quantizePos(camPos)
+    if portal.WPDecKeyDepth == depth
+        and portal.WPDecKeyQX == qx
+        and portal.WPDecKeyQY == qy
+        and portal.WPDecKeyQZ == qz
+    then
+        return portal.WPDecKey
+    end
+    local key = "dec:" .. depth .. ":" .. qx .. "_" .. qy .. "_" .. qz .. ":" .. portal:EntIndex()
+    portal.WPDecKeyDepth = depth
+    portal.WPDecKeyQX = qx
+    portal.WPDecKeyQY = qy
+    portal.WPDecKeyQZ = qz
+    portal.WPDecKey = key
+    return key
+end
+
 -- Bounded LRU pool of RTs for d>1 renders. GetRenderTarget allocates a GPU
 -- surface per unique name and the engine never frees them, so per-portal
 -- caching across many quantized cameras would leak unboundedly. d=1 RTs
@@ -369,7 +394,7 @@ function wp.shouldrender( portal, camOrigin, camAngle, camFOV )
     if not camFOV then camFOV = LocalPlayer():GetFOV() end
 
     local cacheDepth = wp.drawtexturedepth or wp.renderdepth or 1
-    local cacheKey = getChainKey(cacheDepth, camOrigin, portal)
+    local cacheKey = getDecisionKey(cacheDepth, camOrigin, portal)
     local cached = frameShouldRenderCache[cacheKey]
     if cached ~= nil then
         return (cached % 2) == 1, cached >= 2
@@ -585,10 +610,14 @@ function wp.GetPortalScreenPolygon(portal, camPos, camAng, camFov, aspect)
     cachePortalScalars(portal)
     local hw = portal:GetWidth() * 0.5
     local hh = portal:GetHeight() * 0.5
-    -- Visible face sits at pos - fwd*5 (matches DrawQuadEasy in cl_init.lua).
-    local cx = portal.WPPosX - portal.WPFwdX * 5
-    local cy = portal.WPPosY - portal.WPFwdY * 5
-    local cz = portal.WPPosZ - portal.WPFwdZ * 5
+    -- Project the portal's front face - the furthest extent along forward, read from the
+    -- render geometry (RenderMin/Max). A flat or box front sits on the plane; an inverted
+    -- portal's front is recessed, so a fixed offset can't match every shape's stencil.
+    local rmin, rmax = portal.RenderMin, portal.RenderMax
+    local frontOff = (rmin and rmax) and math.max(rmin.x, rmax.x) or 0
+    local cx = portal.WPPosX + portal.WPFwdX * frontOff
+    local cy = portal.WPPosY + portal.WPFwdY * frontOff
+    local cz = portal.WPPosZ + portal.WPFwdZ * frontOff
     local rx = portal.WPRtX * hw
     local ry = portal.WPRtY * hw
     local rz = portal.WPRtZ * hw
@@ -762,7 +791,7 @@ hook.Add("PreRender", "WorldPortals_ResetRenderCount", function()
     frameCulledCount = 0
 end)
 
-function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, parentPoly, parentExitPos, parentExitFwd )
+function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, parentPoly, parentExitPos, parentExitFwd, parentPortal )
     if ( wp.drawing ) then return end
     if not enabled then return end
 
@@ -772,9 +801,17 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
     local oldRenderDepth = wp.renderdepth
     wp.renderdepth = depth
 
+    -- The portal whose exit-view this scan is filling (nil at the top level).
+    -- Scan-phase counterpart to wp.drawingent, which is nil here; consumers read
+    -- it to make render-direction-aware decisions (e.g. hiding an interior's own
+    -- portals while filling its interior door).
+    local oldRenderParent = wp.renderparent
+    wp.renderparent = parentPortal
+
     local portals = wp.portals
     if ( not portals ) then
         wp.renderdepth = oldRenderDepth
+        wp.renderparent = oldRenderParent
         return
     end
 
@@ -954,7 +991,7 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
                     local childDepth = depth + 1
                     local drawPortalsInView = childDepth <= recurseDepth
                     if drawPortalsInView then
-                        wp.renderportals(camOrigin, camAngle, width, height, fov, childDepth, cumulativePoly, exit_pos, exit_forward)
+                        wp.renderportals(camOrigin, camAngle, width, height, fov, childDepth, cumulativePoly, exit_pos, exit_forward, portal)
                     end
 
                     local oldDrawing = wp.drawing
@@ -1014,6 +1051,7 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
         ply:SetWeaponColor( oldWepColor )
     end
     wp.renderdepth = oldRenderDepth
+    wp.renderparent = oldRenderParent
 end
 
 hook.Add( "RenderScene", "WorldPortals_Render", function( plyOrigin, plyAngle, fov )

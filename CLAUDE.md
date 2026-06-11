@@ -27,7 +27,7 @@ This is the **base layer** other addons build on. The main consumer is `AmyJeane
 
 Allocation-free variants in `cl_render.lua` read per-portal cached basis scalars instead of calling engine `WorldToLocal`: `wp.TransformPortalPosInto(out, ...)` / `wp.TransformPortalAngleInto(out, ...)` write into a caller-owned Vector/Angle for hot paths.
 
-`cl_render.lua` state: materials `wp.matBlack/matTrans/matInvis/matView/matView2`; `wp.drawing` (re-entrancy guard set during `render.RenderView`); `wp.rendermode` (true inside `RealRenderView`); `wp.shouldrender(portal, ...)` (visibility decision + `wp-shouldrender` hook); `wp.renderportals(...)`.
+`cl_render.lua` state: materials `wp.matBlack/matTrans/matInvis/matView/matView2`; `wp.drawing` (re-entrancy guard set during `render.RenderView`); `wp.rendermode` (true inside `RealRenderView`); `wp.renderparent` (scan-phase: the portal whose exit-view is being filled, nil at top level - the counterpart to draw-phase `wp.drawingent`, which is nil during the scan, so a `wp-shouldrender` veto reads `wp.renderparent` for render direction); `wp.shouldrender(portal, ...)` (visibility decision + `wp-shouldrender` hook); `wp.renderportals(...)`.
 
 `wp.portals` (in `sh_portals.lua`) is a maintained array of live portals — registered from each portal's shared `Initialize`, deregistered via `EntityRemoved`, rebuilt fresh on change (never mutated in place, so a held reference survives mid-iteration), re-discovered on hot-reload. Hot paths iterate it instead of `ents.FindByClass` per tick/frame.
 
