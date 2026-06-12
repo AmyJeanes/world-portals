@@ -24,6 +24,12 @@ function ENT:KeyValue( key, value )
     elseif ( key == "thickness" ) then
         self:SetThickness( tonumber(value) )
 
+    elseif ( key == "depth" ) then
+        self:SetDepth( tonumber(value) )
+
+    elseif ( key == "faceoffset" ) then
+        self:SetFaceOffset( tonumber(value) or 0 )
+
     elseif ( key == "DisappearDist" or key == "fademaxdist" ) then
         self:SetDisappearDist( tonumber(value) )
 
@@ -171,7 +177,7 @@ function ENT:RebuildCollisionFrame()
         f:SetNWEntity("WPPortal", self)
         self.CollisionFrame = f
     end
-    f:BuildFrame(w, h, self:GetThickness())
+    f:BuildFrame(w, h, self.RenderMax.x, self.RenderMin.x)
     -- No-collide the (unparented) frame with the parent it sits in NOW, before the
     -- next physics tick: an overlapping solid hull would interpenetrate that parent
     -- and the physics solver would violently shove it away. The frame's Think

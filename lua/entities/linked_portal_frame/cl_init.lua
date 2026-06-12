@@ -25,7 +25,9 @@ hook.Add("PostDrawTranslucentRenderables", "WorldPortals_DebugCollision", functi
     for _, fr in ipairs(ents.FindByClass("linked_portal_frame")) do
         local portal = fr:GetNWEntity("WPPortal")
         if IsValid(fr) and IsValid(portal) then
-            local slabs = fr:FrameSlabs(portal:GetWidth(), portal:GetHeight(), portal:GetThickness())
+            local rmin = portal.RenderMin and portal.RenderMin.x
+            local rmax = portal.RenderMax and portal.RenderMax.x
+            local slabs = fr:FrameSlabs(portal:GetWidth(), portal:GetHeight(), rmax, rmin)
             if slabs then
                 local pos, ang = fr:GetPos(), fr:GetAngles()
                 for _, s in ipairs(slabs) do

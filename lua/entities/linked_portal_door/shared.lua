@@ -5,13 +5,32 @@ ENT.Spawnable           = false
 ENT.AdminOnly           = false
 ENT.Editable            = false
 
-function ENT:SetupBounds(w, h, t)
+function ENT:SetupBounds(w, h, t, d, o)
     local width = w or self:GetWidth()
     local height = h or self:GetHeight()
-    local thickness = t or self:GetThickness()
 
-    self.RenderMin = Vector(-(5 + thickness), -width / 2, -height / 2)
-    self.RenderMax = Vector(- 5             ,  width / 2,  height / 2)
+    -- Canonical render box: a visible face and a cavity at least 5u deep behind it. The
+    -- stencil mask needs that depth so the near-Z clip can't slice it to nothing as the eye
+    -- approaches (the flat-portal gap). SetDepth is the modern API: a cavity d deep behind an
+    -- opening at FaceOffset. Legacy Thickness (and the Hammer keyvalue) is a compatibility shim
+    -- that keeps the exact face the content authored and only adds depth behind it, never moving it.
+    local face, back, seam, logic
+    local depth = d or self:GetDepth()
+    if depth > 0 then
+        -- FaceOffset shifts only the rendered opening, never GetPos (the wormhole/teleport plane),
+        -- so legacy thickness migrates to depth + faceoffset with its exit unchanged. 0 = flush.
+        local faceoffset = o or self:GetFaceOffset()
+        face, back, seam, logic = faceoffset, faceoffset - depth, depth - faceoffset, depth
+    else
+        local thickness = t or self:GetThickness()
+        face  = math.max(-(5 + thickness), -5)
+        back  = face - math.max(5, math.abs(thickness))
+        seam  = 5 + thickness            -- legacy ghost-seam plane (cl_ghosts)
+        logic = math.max(0, thickness)   -- legacy teleport/cull depth (sh_teleport, cl_render)
+    end
+
+    self.RenderMin = Vector(back, -width / 2, -height / 2)
+    self.RenderMax = Vector(face,  width / 2,  height / 2)
     self.RenderQuads = {
         -- bottom
         { Vector(self.RenderMin.x, self.RenderMin.y, self.RenderMin.z), Vector(self.RenderMax.x, self.RenderMin.y, self.RenderMin.z), Vector(self.RenderMax.x, self.RenderMax.y, self.RenderMin.z), Vector(self.RenderMin.x, self.RenderMax.y, self.RenderMin.z) },
@@ -28,6 +47,9 @@ function ENT:SetupBounds(w, h, t)
         -- right
         { Vector(self.RenderMin.x, self.RenderMax.y, self.RenderMin.z), Vector(self.RenderMin.x, self.RenderMax.y, self.RenderMax.z), Vector(self.RenderMax.x, self.RenderMax.y, self.RenderMax.z), Vector(self.RenderMax.x, self.RenderMax.y, self.RenderMin.z) },
     }
+
+    self.SeamOffset = seam
+    self.LogicDepth = logic
 
     self:SetCollisionBounds( self.RenderMin, self.RenderMax )
 
@@ -47,6 +69,7 @@ function ENT:Initialize()
         if not self.EnableTeleportSetByMap then
             self:SetEnableTeleport(true)
         end
+        self:SetInvertedReal(true)
     end
 
     self:SetMoveType( MOVETYPE_NONE )
@@ -68,17 +91,36 @@ end
 function ENT:SetupDataTables()
     self:NetworkVar( "Entity", "Exit" )
 
-    self:NetworkVar( "Int", "Width" )
-    self:NetworkVar( "Int", "Height" )
+    self:NetworkVar( "Float", "Width" )
+    self:NetworkVar( "Float", "Height" )
     self:NetworkVar( "Int", "DisappearDist" )
     self:NetworkVar( "Int", "Thickness" )
     self:NetworkVar( "Int", "Transparency" )
     self:NetworkVar( "Int", "ZFar" )
 
+    -- Depth is the modern API: opening flush at GetPos, cavity Depth deep behind it. 0 = unset
+    -- (SetDepth never called or SetDepth(0)), which SetupBounds reads as the legacy Thickness
+    -- shim. A positive call stores max(5, d) - so the minimum flush cavity is 5; 0 stays the
+    -- unset sentinel so callers (and the debug tool) can switch a portal back to thickness.
+    self:NetworkVar( "Float", "Depth" )
+    local rawSetDepth = self.SetDepth
+    self.SetDepth = function(s, v) rawSetDepth(s, (v and v > 0) and math.max(5, v) or 0) end
+
+    -- FaceOffset places the rendered opening relative to GetPos (0 = flush, negative = recessed).
+    -- It is render-only: it never moves GetPos, the wormhole/teleport plane, so a legacy thickness
+    -- portal migrates to depth + faceoffset with no exit shift. Only read while Depth > 0.
+    self:NetworkVar( "Float", "FaceOffset" )
+
     self:NetworkVar( "String", "CustomLink" )
     self:NetworkVar( "String", "FalseWorld" )
 
     self:NetworkVar( "Bool", "Inverted" )
+    -- Every portal is an inverted cavity now, so Inverted is permanently on. SetInverted shipped
+    -- for years and downstream addons still call it with assorted values; swallow them so they
+    -- neither error nor un-invert. Keep the real setter to force it on in Initialize, so the
+    -- TARDIS debug overlay's GetInverted read-back stays honest.
+    self.SetInvertedReal = self.SetInverted
+    self.SetInverted = function() end
     self:NetworkVar( "Bool", "Open" )
     self:NetworkVar( "Bool", "EnableTeleport" )
 
@@ -94,19 +136,31 @@ function ENT:SetupDataTables()
     self:NetworkVarNotify("Width", function(ent, name, old, new)
         ent:SetupBounds(new)
         if SERVER and IsValid(ent.CollisionFrame) then
-            ent.CollisionFrame:BuildFrame(new, ent:GetHeight(), ent:GetThickness())
+            ent.CollisionFrame:BuildFrame(new, ent:GetHeight(), ent.RenderMax.x, ent.RenderMin.x)
         end
     end)
     self:NetworkVarNotify("Height", function(ent, name, old, new)
         ent:SetupBounds(nil, new)
         if SERVER and IsValid(ent.CollisionFrame) then
-            ent.CollisionFrame:BuildFrame(ent:GetWidth(), new, ent:GetThickness())
+            ent.CollisionFrame:BuildFrame(ent:GetWidth(), new, ent.RenderMax.x, ent.RenderMin.x)
         end
     end)
     self:NetworkVarNotify("Thickness", function(ent, name, old, new)
         ent:SetupBounds(nil, nil, new)
         if SERVER and IsValid(ent.CollisionFrame) then
-            ent.CollisionFrame:BuildFrame(ent:GetWidth(), ent:GetHeight(), new)
+            ent.CollisionFrame:BuildFrame(ent:GetWidth(), ent:GetHeight(), ent.RenderMax.x, ent.RenderMin.x)
+        end
+    end)
+    self:NetworkVarNotify("Depth", function(ent, name, old, new)
+        ent:SetupBounds(nil, nil, nil, new)
+        if SERVER and IsValid(ent.CollisionFrame) then
+            ent.CollisionFrame:BuildFrame(ent:GetWidth(), ent:GetHeight(), ent.RenderMax.x, ent.RenderMin.x)
+        end
+    end)
+    self:NetworkVarNotify("FaceOffset", function(ent, name, old, new)
+        ent:SetupBounds(nil, nil, nil, nil, new)
+        if SERVER and IsValid(ent.CollisionFrame) then
+            ent.CollisionFrame:BuildFrame(ent:GetWidth(), ent:GetHeight(), ent.RenderMax.x, ent.RenderMin.x)
         end
     end)
 

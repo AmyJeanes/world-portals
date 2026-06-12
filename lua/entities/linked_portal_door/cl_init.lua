@@ -3,22 +3,17 @@ include( "shared.lua" )
 
 AccessorFunc( ENT, "texture", "Texture" )
 
-function ENT:DrawPortal(exitPortal)
+function ENT:DrawPortal()
     if not (self:GetModel() == "models/error.mdl") then
         render.ModelMaterialOverride( wp.matInvis )
         render.Model({model = self:GetModel(), pos = self:LocalToWorld(self:GetModelPos()), angle = self:LocalToWorldAngles(self:GetModelAng())})
         render.ModelMaterialOverride( nil )
-    elseif self:GetThickness() == 0 or hook.Call("wp-allowthickportal", GAMEMODE, self, exitPortal)==false then
-        -- Draw the face at the front of the render geometry (recessed for an inverted
-        -- portal), matching the cull poly and the box/inverted stencils.
-        local fo = (self.RenderMin and self.RenderMax) and math.max(self.RenderMin.x, self.RenderMax.x) or 0
-        render.DrawQuadEasy( self:GetPos() + self:GetForward() * fo, self:GetForward(), self:GetWidth(), self:GetHeight(), color_black, self:GetAngles().roll )
-    elseif self:GetInverted() then
+    else
+        -- No model: draw the inverted cavity as 5 black quads (sides + back) that write the
+        -- stencil mask. The open front is the visible face; RenderQuads is built in SetupBounds.
         for _,quad in ipairs(self.RenderQuads) do
             render.DrawQuad(self:LocalToWorld(quad[1]), self:LocalToWorld(quad[2]), self:LocalToWorld(quad[3]), self:LocalToWorld(quad[4]), color_black)
         end
-    else
-        render.DrawBox(self:GetPos(), self:GetAngles(), self.RenderMin, self.RenderMax, color_black)
     end
 end
 
@@ -51,7 +46,7 @@ function ENT:Draw()
         else
             render.SetMaterial( wp.matBlack )
         end
-        self:DrawPortal(exitPortal)
+        self:DrawPortal()
     else
         if shouldrender then
             render.ClearStencil()
@@ -75,7 +70,7 @@ function ENT:Draw()
         end
         render.SetColorModulation( 1, 1, 1 )
 
-        self:DrawPortal(exitPortal)
+        self:DrawPortal()
 
         if shouldrender then
             render.SetStencilCompareFunction( STENCIL_EQUAL )

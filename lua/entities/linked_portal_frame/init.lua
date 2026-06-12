@@ -23,8 +23,8 @@ end
 
 -- (Re)build the collision hull from the portal opening dimensions. Calling again
 -- replaces the previous physics object.
-function ENT:BuildFrame(width, height, thickness)
-    local slabs = self:FrameSlabs(width, height, thickness)
+function ENT:BuildFrame(width, height, faceX, deepX)
+    local slabs = self:FrameSlabs(width, height, faceX, deepX)
     if not slabs then
         self:PhysicsDestroy()
         return false
