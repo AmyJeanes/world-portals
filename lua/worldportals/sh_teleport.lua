@@ -68,8 +68,8 @@ local function predictPlayerTeleport(ply, mv, cmd)
         -- and bounce the player. Thick portals allow firing back to the cull
         -- plane so you can re-cross their walkable volume - except in noclip,
         -- where the un-mirrored velocity would just re-fire the bounce.
-        local thickness = portal:GetThickness()
-        local backLimit = (thickness > 0 and ply:GetMoveType() ~= MOVETYPE_NOCLIP) and -thickness or 0
+        local depth = portal.LogicDepth or 0
+        local backLimit = (depth > 0 and ply:GetMoveType() ~= MOVETYPE_NOCLIP) and -depth or 0
         if distNow <= backLimit then goto cont end
         local distNext = (nextEyeX - pos.x) * fwd.x + (nextEyeY - pos.y) * fwd.y + (nextEyeZ - pos.z) * fwd.z
         local centerNow  = (hullCenterX - pos.x) * fwd.x + (hullCenterY - pos.y) * fwd.y + (hullCenterZ - pos.z) * fwd.z

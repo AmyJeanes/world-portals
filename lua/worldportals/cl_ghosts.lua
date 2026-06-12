@@ -17,9 +17,6 @@ local cvShowSelf
 local GHOST_GRACE   = 0.1   -- seconds to keep a ghost alive after the straddle test drops out (anti-flicker)
 local OPENING_SLACK = 8     -- units of slack on the portal opening (width/height) test
 local FIND_MARGIN   = 256   -- extra radius around the portal for the candidate FindInSphere
--- The visible face sits 5u in front of portal:GetPos() (DrawQuadEasy at pos-fwd*5),
--- so clip the halves there, not at the crossing plane, to seam on the glowing face.
-local FACE_OFFSET   = 5
 
 wp.ghosts = wp.ghosts or {}   -- [entity] = record
 
@@ -142,11 +139,11 @@ local function straddles(ent, portal)
     return false
 end
 
--- Seam offset = FACE_OFFSET + thickness: a thick portal is a tunnel of depth
--- `thickness`, so the seam sits on its back face, else the doorway depth shows
--- through.
+-- Seam offset: where the two clipped halves meet, measured back from GetPos along forward.
+-- SetupBounds stores it per portal (legacy = 5 + thickness, the old recessed back face;
+-- modern = the SetDepth cavity depth), so the seam tracks each portal's authored geometry.
 local function faceOffset(portal)
-    return FACE_OFFSET + portal:GetThickness()
+    return portal.SeamOffset or 0
 end
 
 -- Recompute the entry/exit clip planes (n . p = D) the halves are sliced on, each

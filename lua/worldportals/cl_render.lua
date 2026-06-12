@@ -442,15 +442,17 @@ function wp.shouldrender( portal, camOrigin, camAngle, camFOV )
         end
     end
 
-    -- Back-face cull. Use the thick-portal back-plane only at d=1 - at d>1
-    -- the inner camera lands inside the exit's thick volume by construction
-    -- and would bounce-recurse forever.
-    local thickness = portal:GetThickness()
+    -- Back-face cull. A portal is an inverted cavity LogicDepth deep behind GetPos. Cull on the
+    -- BACK plane only at d=1, so the eye can stand inside the cavity and still see through. At
+    -- d>1 the mirror-transformed inner camera lands inside the exit's own cavity by construction,
+    -- so culling on the origin plane there stops infinite recursion. A flat legacy portal has
+    -- LogicDepth 0 (no cavity to stand in), so it culls on the origin plane as it always did.
+    local depth = portal.LogicDepth or 0
     local planeX, planeY, planeZ = ppx, ppy, ppz
-    if thickness > 0 and renderDepth <= 1 then
-        planeX = ppx - pfx * thickness
-        planeY = ppy - pfy * thickness
-        planeZ = ppz - pfz * thickness
+    if depth > 0 and renderDepth <= 1 then
+        planeX = ppx - pfx * depth
+        planeY = ppy - pfy * depth
+        planeZ = ppz - pfz * depth
     end
     local behind = pfx * (camOrigin.x - planeX) + pfy * (camOrigin.y - planeY) + pfz * (camOrigin.z - planeZ) < 0
     if behind then
@@ -610,9 +612,8 @@ function wp.GetPortalScreenPolygon(portal, camPos, camAng, camFov, aspect)
     cachePortalScalars(portal)
     local hw = portal:GetWidth() * 0.5
     local hh = portal:GetHeight() * 0.5
-    -- Project the portal's front face - the furthest extent along forward, read from the
-    -- render geometry (RenderMin/Max). A flat or box front sits on the plane; an inverted
-    -- portal's front is recessed, so a fixed offset can't match every shape's stencil.
+    -- The cull poly is the visible face quad. RenderMax.x is that face (RenderMin.x is the
+    -- deeper cavity back), so offset the poly centre out to it along forward.
     local rmin, rmax = portal.RenderMin, portal.RenderMax
     local frontOff = (rmin and rmax) and math.max(rmin.x, rmax.x) or 0
     local cx = portal.WPPosX + portal.WPFwdX * frontOff

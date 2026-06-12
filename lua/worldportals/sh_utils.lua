@@ -30,7 +30,8 @@ end
 
 -- Checks if a given position and view angle is looking at another position
 function wp.IsLookingAt( portal, portal_pos, view_pos, view_ang, view_fov )
-    local radius = math.max(portal:BoundingRadius(), portal:GetThickness())
+    local depth = (portal.RenderMax and portal.RenderMin) and (portal.RenderMax.x - portal.RenderMin.x) or 5
+    local radius = math.max(portal:BoundingRadius(), depth)
     local dx = portal_pos.x - view_pos.x
     local dy = portal_pos.y - view_pos.y
     local dz = portal_pos.z - view_pos.z
@@ -54,7 +55,7 @@ function wp.IsLookingAt( portal, portal_pos, view_pos, view_ang, view_fov )
         -- extent, not the sphere radius which overstates thin portals).
         local extent = (math.abs(portal:GetWidth()     * portal:GetRight():Dot(aimVec))
                       + math.abs(portal:GetHeight()    * portal:GetUp():Dot(aimVec))
-                      + math.abs(portal:GetThickness() * portal:GetForward():Dot(aimVec))) / 2
+                      + math.abs(depth * portal:GetForward():Dot(aimVec))) / 2
         if dx * aimVec.x + dy * aimVec.y + dz * aimVec.z + extent > 0 then
             return true
         end
