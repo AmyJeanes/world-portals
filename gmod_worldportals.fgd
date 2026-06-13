@@ -4,8 +4,6 @@
 //
 //=============================================================================
 
-@include "base.fgd" 
-
 @BaseClass = LinkedPortalDoor : "An entity that can be linked to another door and create a passage between them dynamically."
 [
 	partnername(target_destination) : "Linked Partner" : : "Another 'prop_linked_portal_door' entity which will link to this one."

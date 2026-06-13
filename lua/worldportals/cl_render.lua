@@ -117,12 +117,10 @@ local function getChainKey(depth, camPos, portal)
     return key
 end
 
--- DECISION key for frameShouldRenderCache, its only user. Unlike getChainKey (RT
--- allocation + chain dedup, camera-independent at d=1 for portal:SetTexture
--- stability), this ALWAYS folds the camera in, so a second d=1 view in the same
--- frame - a TARDIS scanner, a security camera/monitor - gets its own render
--- decision instead of reusing the eye view's. Own per-portal key cache so it
--- never clobbers getChainKey's.
+-- Key for the render-decision cache. Unlike getChainKey, always folds the camera
+-- in, so a second d=1 view in the same frame (a TARDIS scanner, a security
+-- monitor) gets its own decision instead of reusing the eye view's. Separate
+-- per-portal key fields so the two caches can't clobber each other.
 local function getDecisionKey(depth, camPos, portal)
     if not camPos then return getChainKey(depth, nil, portal) end
     local qx, qy, qz = quantizePos(camPos)
@@ -802,10 +800,9 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
     local oldRenderDepth = wp.renderdepth
     wp.renderdepth = depth
 
-    -- The portal whose exit-view this scan is filling (nil at the top level).
-    -- Scan-phase counterpart to wp.drawingent, which is nil here; consumers read
-    -- it to make render-direction-aware decisions (e.g. hiding an interior's own
-    -- portals while filling its interior door).
+    -- The portal whose view we're rendering right now (nil for the player's own
+    -- view). A consumer reads it to tell which portal the current render is for -
+    -- e.g. an interior hiding its own portals while we render the view through its door.
     local oldRenderParent = wp.renderparent
     wp.renderparent = parentPortal
 

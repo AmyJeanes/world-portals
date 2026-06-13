@@ -16,12 +16,10 @@ local cvShowSelf
 
 local GHOST_GRACE   = 0.1   -- seconds to keep a ghost alive after the straddle test drops out (anti-flicker)
 local OPENING_SLACK = 8     -- units of slack on the portal opening (width/height) test
-local FIND_MARGIN   = 256   -- extra radius around the portal for the candidate FindInSphere
 
 wp.ghosts = wp.ghosts or {}   -- [entity] = record
 
--- True while ent has a live ghost (it's straddling a portal). A consumer that also
--- drives the entity's RenderOverride uses this to yield the slot while we own it.
+-- Lets a consumer that also drives ent's RenderOverride yield to us while we ghost it.
 function wp.IsGhosting(ent)
     return wp.ghosts[ent] ~= nil
 end
@@ -39,8 +37,6 @@ local function isCandidate(ent)
     if ent:IsPlayer() and not ent:Alive() then return false end
     if ent:GetClass() ~= "prop_physics" and not ent:IsRagdoll()
         and not ent:IsNPC() and not ent:IsPlayer() then return false end
-    -- A NoDraw'd prop is hidden for a reason; ghosting it would show a bodiless
-    -- emerged half, so skip it.
     if ent:GetNoDraw() then return false end
     return true
 end
@@ -146,18 +142,10 @@ local function faceOffset(portal)
     return portal.SeamOffset or 0
 end
 
--- Recompute the entry/exit clip planes (n . p = D) the halves are sliced on, each
--- at its portal's visible face; the exit folds in its pos/ang offsets so an offset
--- or relinked pair still seams cleanly.
-local function updatePlanes(rec)
-    local portal, exit = rec.portal, rec.exit
-
-    local eoff = faceOffset(portal)
-    local efwd = portal:GetForward()
-    local epos = portal:GetPos()
-    rec.entryNrm.x, rec.entryNrm.y, rec.entryNrm.z = efwd.x, efwd.y, efwd.z
-    rec.entryD = efwd.x * epos.x + efwd.y * epos.y + efwd.z * epos.z - eoff
-
+-- The exit clip plane (n . p = D) the ghost half is sliced on, at the exit's visible
+-- face, folding in its pos/ang offsets so an offset or relinked pair still seams.
+local function updateExitPlane(rec)
+    local exit = rec.exit
     local xoff = faceOffset(exit)
     local xfwd = exit:GetForward()
     local xao = exit:GetExitAngOffset()
@@ -175,6 +163,16 @@ local function updatePlanes(rec)
     rec.exitD = xfwd.x * (xpos.x - xfwd.x * xoff)
               + xfwd.y * (xpos.y - xfwd.y * xoff)
               + xfwd.z * (xpos.z - xfwd.z * xoff)
+end
+
+-- The entry clip plane the real entity's half is sliced on, at the portal's visible face.
+local function updateEntryPlane(rec)
+    local portal = rec.portal
+    local eoff = faceOffset(portal)
+    local efwd = portal:GetForward()
+    local epos = portal:GetPos()
+    rec.entryNrm.x, rec.entryNrm.y, rec.entryNrm.z = efwd.x, efwd.y, efwd.z
+    rec.entryD = efwd.x * epos.x + efwd.y * epos.y + efwd.z * epos.z - eoff
 end
 
 -- Mirror the original's appearance onto the ghost: model/skin/bodygroups/scale/
@@ -208,10 +206,13 @@ local function syncAppearance(rec)
     end
 end
 
--- Forward the studio render flags to DrawModel and any chained override (e.g. the
--- prop-spawn materialize effect reads them).
+-- Clip the real entity to its entry half, recomputing the entry plane here at the draw
+-- so it tracks a fast-moving portal (mirror of the ghost's exit plane). Forwards the
+-- studio render flags to DrawModel and any chained override (e.g. the prop-spawn
+-- materialize effect reads them).
 local function makeOriginalOverride(rec)
     return function(self, flags)
+        updateEntryPlane(rec)
         local oldEC = render.EnableClipping(true)
         render.PushCustomClipPlane(rec.entryNrm, rec.entryD)
             if rec.savedRenderOverride then
@@ -281,9 +282,31 @@ local function makeGhostOverride(rec)
     return function(self, flags)
         local ent = rec.ent
         if not IsValid(ent) then return end
+        -- The shadow-depth pass (projected textures, e.g. a lamp) calls this override
+        -- too; drawing there casts a ghost shadow that DrawShadow(false) can't stop - it
+        -- doesn't gate a manual DrawModel. Skip the pass so the ghost stays shadowless.
+        if bit.band(flags, STUDIO_SHADOWDEPTHTEXTURE) ~= 0 then return end
         if localGhostIsCutaway(rec) then return end
         if ghostDrawVetoed(rec, self) then return end
-        if rec.skeletal then copyBonesThroughPortal(rec, ent, self) end
+        -- Past GHOST_GRACE the throttled (25Hz) scan hasn't removed this ghost yet, but you
+        -- may have moved far enough that the source is no longer force-drawn in the recursion
+        -- - its bones then read as the bind pose and a skeletal ghost copies a T-pose on the
+        -- way out. Stop drawing at the same threshold the scan removes on.
+        if SysTime() - rec.lastSeen > GHOST_GRACE then return end
+        -- Pose + exit clip plane are recomputed here, at the draw: the ghost only renders
+        -- in the portal RT passes (world-portals draws portals under VIEW_3DSKY), so
+        -- computing them at the draw keeps it glued to a fast-moving exit between the 25Hz
+        -- discovery scans. Skeletal ghosts place their bones; rigid props set the body.
+        if rec.skeletal then
+            copyBonesThroughPortal(rec, ent, self)
+        else
+            poseGhost(rec)
+            -- DrawModel renders from the bone matrices the engine built (off the
+            -- pre-override transform) before this override ran, so SetPos alone wouldn't
+            -- move the draw; SetupBones rebuilds them from the pose we just set.
+            self:SetupBones()
+        end
+        updateExitPlane(rec)
         local c = ent:GetColor()
         local oldBlend = render.GetBlend()
         local oldEC = render.EnableClipping(true)
@@ -307,9 +330,12 @@ local function makeWeaponGhostOverride(rec)
     return function(self, flags)
         local w = rec.weapon
         if not IsValid(w) then return end
+        if bit.band(flags, STUDIO_SHADOWDEPTHTEXTURE) ~= 0 then return end  -- no shadow-depth draw, so no weapon-ghost shadow (see makeGhostOverride)
         if localGhostIsCutaway(rec) then return end
         if ghostDrawVetoed(rec, self) then return end
+        if SysTime() - rec.lastSeen > GHOST_GRACE then return end  -- stop at grace, no bind-pose flash (see makeGhostOverride)
         copyBonesThroughPortal(rec, w, self)
+        updateExitPlane(rec)
         local c = w:GetColor()
         local oldBlend = render.GetBlend()
         local oldEC = render.EnableClipping(true)
@@ -326,6 +352,7 @@ end
 
 local function makeWeaponOriginalOverride(rec)
     return function(self, flags)
+        updateEntryPlane(rec)
         local oldEC = render.EnableClipping(true)
         render.PushCustomClipPlane(rec.entryNrm, rec.entryD)
             if rec.weaponSavedOverride then
@@ -467,7 +494,8 @@ local function updateStraddle(rec, now)
     -- which is baked in at ClientsideModel creation - rebuild on change.
     if isTranslucent(rec.ent) ~= rec.translucent then return false end
 
-    updatePlanes(rec)
+    -- Pose here only refreshes the ghost's cull bounds between draws; the overrides
+    -- pose + plane for the actual draw.
     poseGhost(rec)
     syncAppearance(rec)
     ensureOriginalOverride(rec)
@@ -478,10 +506,60 @@ end
 local seen = {}
 
 -- Discovery (FindInSphere + straddle tests) is the bulk of the cost and needn't
--- run every frame: the pose is re-applied per-frame in PreDrawOpaqueRenderables
--- and GHOST_GRACE outlives the gap. Throttle to ~25 Hz.
+-- run every frame: the ghost overrides re-pose/re-plane per draw and GHOST_GRACE
+-- outlives the gap. Throttle to ~25 Hz.
 local SCAN_INTERVAL = 0.04   -- seconds between discovery scans (~25 Hz)
 local nextScan = 0
+
+-- Max distance from an entity's origin to its farthest bound. FindInSphere culls on
+-- origins, and an origin can sit far from the geometry that matters on BOTH sides of the
+-- search: a prop's origin (e.g. a ladder's might be at one end) and a portal's (its box sits
+-- behind the face, offset by 5 + thickness/2, and grows with width/height). Used for both.
+local function reachOf(ent)
+    return ent:OBBCenter():Length() + ent:BoundingRadius()
+end
+
+-- The search radius is padded by the largest candidate's reach so a prop whose origin
+-- sits far from its straddling geometry is still discovered; the straddle test then keys
+-- off its OBB centre. Reach is ~static (model/scale), so cache it per entity on spawn;
+-- the max only recomputes when an entity at the max leaves, scanning the cached values.
+local seeded = false
+-- Mode k (weak keys) auto removes entries when the key (entity) no longer exists via GC.
+local reachByEnt = setmetatable({}, { __mode = "k" })
+local maxReach = 0
+-- Set a minimum so a straddling player/NPC/ragdoll is found even when no large props exist
+local REACH_FLOOR = 256  
+
+local function trackReach(ent)
+    if not IsValid(ent) then return end
+    if ent:GetClass() == "prop_physics" or ent:IsRagdoll() or ent:IsNPC() or ent:IsPlayer() then
+        local reach = reachOf(ent)
+        reachByEnt[ent] = reach
+        if reach > maxReach then maxReach = reach end
+    end
+end
+
+local function refreshMaxReach()
+    local m = 0
+    for ent, reach in pairs(reachByEnt) do
+        if IsValid(ent) and reach > m then m = reach end
+    end
+    maxReach = m
+end
+
+-- Bounds aren't populated on the creation frame, so measure a tick later.
+hook.Add("OnEntityCreated", "WorldPortals_GhostReach", function(ent)
+    timer.Simple(0, function() trackReach(ent) end)
+end)
+
+-- Drop the cached reach on removal; only losing an entity at the current max shrinks it
+-- Weak keys on reachByEnt are a backstop should a removal ever be missed.
+hook.Add("EntityRemoved", "WorldPortals_GhostReach", function(ent)
+    local reach = reachByEnt[ent]
+    if not reach then return end
+    reachByEnt[ent] = nil
+    if reach >= maxReach then refreshMaxReach() end
+end)
 
 -- Only ghost where the prop would actually teleport. wp-shouldtp is the right
 -- "portal off" signal because it's position-independent (networked state), unlike
@@ -505,13 +583,20 @@ hook.Add("Think", "WorldPortals_Ghosts", function()
     if now < nextScan then return end
     nextScan = now + SCAN_INTERVAL
 
+    -- Seed once for entities that predate our OnEntityCreated hook (already present at
+    -- load, or after a Lua autorefresh).
+    if not seeded then
+        seeded = true
+        for _, e in ipairs(ents.GetAll()) do trackReach(e) end
+    end
+
     for k in pairs(seen) do seen[k] = nil end
 
     for _, portal in ipairs(wp.portals) do
         if IsValid(portal) and portal.GetOpen and portal:GetOpen()
             and portal:GetEnableTeleport() and IsValid(portal:GetExit()) then
             local ppos = portal:GetPos()
-            local r = portal:BoundingRadius() + FIND_MARGIN
+            local r = reachOf(portal) + math.max(maxReach, REACH_FLOOR)
             for _, ent in ipairs(ents.FindInSphere(ppos, r)) do
                 if isCandidate(ent) and straddles(ent, portal) and wouldTeleport(portal, ent) then
                     -- If straddling more than one portal, keep the nearest.
@@ -568,7 +653,6 @@ hook.Add("wp-teleport", "WorldPortals_GhostsTeleport", function(portal, ent)
         if IsValid(newEntry) and IsValid(newEntry:GetExit()) then
             rec.portal = newEntry
             rec.exit = newEntry:GetExit()
-            updatePlanes(rec)
         end
     end
     nextScan = 0
@@ -588,18 +672,5 @@ hook.Add("EntityRemoved", "WorldPortals_Ghosts", function(ent)
     end
     if victims then
         for _, rec in ipairs(victims) do endStraddle(rec) end
-    end
-end)
-
--- Authoritative ghost pose, after every Think (so cl_renderfollow.lua's render-follow
--- has finalized the original's transform) and right before the scene draws - keeps
--- the ghost glued even at extreme loop speeds.
-hook.Add("PreDrawOpaqueRenderables", "WorldPortals_GhostPose", function(_, skybox)
-    if skybox then return end
-    if not next(wp.ghosts) then return end
-    for ent, rec in pairs(wp.ghosts) do
-        if IsValid(ent) and IsValid(rec.ghost) and IsValid(rec.exit) then
-            poseGhost(rec)
-        end
     end
 end)
