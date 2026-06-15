@@ -151,3 +151,83 @@ hook.Add("HUDPaint", "WorldPortals_Debug", function()
         end
     end
 end)
+
+-- 3D structure overlay. The screen-polygon overlay above is flat; this draws each
+-- portal's actual render geometry projected to screen so the recessed thick cavity is
+-- legible - the 5 stencil faces (each a distinct colour, matching the RenderQuads
+-- order), the open front rim, the GetPos wormhole anchor and the normal.
+CreateClientConVar("worldportals_debug_3d", "0", true, false, "World Portals - Draw portal 3D render structure", 0, 1)
+
+-- RenderQuads order (shared.lua): bottom, top, back, left, right (no front - it's open).
+local FACE_COLORS = {
+    Color(80, 120, 255),  -- bottom
+    Color(0, 255, 255),   -- top
+    Color(255, 120, 0),   -- back (recessed)
+    Color(255, 0, 255),   -- left
+    Color(255, 255, 0),   -- right
+}
+local C_BOUNDS = Color(0, 255, 0)
+local C_FRONT = Color(255, 255, 255)
+local C_ANCHOR = Color(255, 0, 0)
+local C_OPENING = Color(0, 255, 0) -- GetPos wormhole/opening plane (x=0)
+
+-- Project to screen and draw in HUDPaint so the overlay is always on top (like the
+-- screen-polygon debug above), not depth-occluded by the shell. Skip a segment if
+-- either end is behind the camera (ToScreen coords are meaningless there).
+local function line3D(a, b, col)
+    local sa, sb = a:ToScreen(), b:ToScreen()
+    if not (sa.visible and sb.visible) then return end
+    surface.SetDrawColor(col)
+    surface.DrawLine(sa.x, sa.y, sb.x, sb.y)
+end
+
+local function quadEdges(a, b, c, d, col)
+    line3D(a, b, col)
+    line3D(b, c, col)
+    line3D(c, d, col)
+    line3D(d, a, col)
+end
+
+hook.Add("HUDPaint", "WorldPortals_Debug3D", function()
+    if GetConVar("worldportals_debug_3d"):GetInt() <= 0 then return end
+
+    for _, portal in ipairs(wp.portals) do
+        local mn, mx = portal.RenderMin, portal.RenderMax
+        if IsValid(portal) and mn and mx then
+            local pos = portal:GetPos()
+            local fwd, rt, up = portal:GetForward(), portal:GetRight(), portal:GetUp()
+
+            -- The actual stencil faces, per-face colour, so the bar's face is identifiable.
+            local quads = portal.RenderQuads
+            if quads then
+                for i, q in ipairs(quads) do
+                    quadEdges(portal:LocalToWorld(q[1]), portal:LocalToWorld(q[2]),
+                        portal:LocalToWorld(q[3]), portal:LocalToWorld(q[4]),
+                        FACE_COLORS[i] or C_BOUNDS)
+                end
+            end
+
+            -- Open front rim (at RenderMax.x) - the opening, no stencil face here.
+            quadEdges(
+                portal:LocalToWorld(Vector(mx.x, mn.y, mn.z)),
+                portal:LocalToWorld(Vector(mx.x, mx.y, mn.z)),
+                portal:LocalToWorld(Vector(mx.x, mx.y, mx.z)),
+                portal:LocalToWorld(Vector(mx.x, mn.y, mx.z)),
+                C_FRONT)
+
+            -- GetPos opening plane (local x=0) - where the interior view is anchored,
+            -- 5u IN FRONT of the recessed cavity front. The interior registers to THIS.
+            quadEdges(
+                portal:LocalToWorld(Vector(0, mn.y, mn.z)),
+                portal:LocalToWorld(Vector(0, mx.y, mn.z)),
+                portal:LocalToWorld(Vector(0, mx.y, mx.z)),
+                portal:LocalToWorld(Vector(0, mn.y, mx.z)),
+                C_OPENING)
+
+            -- GetPos anchor cross + forward normal.
+            line3D(pos - rt * 6, pos + rt * 6, C_ANCHOR)
+            line3D(pos - up * 6, pos + up * 6, C_ANCHOR)
+            line3D(pos, pos + fwd * 24, C_FRONT)
+        end
+    end
+end)
