@@ -80,19 +80,36 @@ function ENT:Draw()
         if shouldrender then
             render.SetStencilCompareFunction( STENCIL_EQUAL )
 
-            -- Blit the exit-view RT into the stencilled opening. cam.Start2D maps to this eye's
-            -- viewport (the whole screen in mono, a per-eye sub-viewport in stereoscopy/VR), so
-            -- the rect is viewport-local at (0,0) - each eye stays in its own viewport, no
-            -- cross-eye bleed - and the draw-color alpha carries portal transparency, blending
-            -- over what the stencil pass left behind (black for a solid portal, the world for a
-            -- transparent one).
+            -- Composite the exit-view RT into the stencilled opening. render.DrawScreenQuad
+            -- (the 3D context, not cam.Start2D - the 2D context skews the fill off-centre so
+            -- the interior slides as you look across the portal obliquely) fills the active
+            -- eye sub-viewport exactly. Its UV spans the whole render target though, so a
+            -- stereoscopy/VR eye would read only its half - remap the eye's UV slice back to
+            -- [0..1] (identity in mono). SetBlend carries portal transparency; the RT's own
+            -- alpha is flattened to 255 upstream.
+            local vx, vy = wp.viewportX or 0, wp.viewportY or 0
             local vw, vh = wp.viewportW or ScrW(), wp.viewportH or ScrH()
+            local rtw, rth = wp.viewportRTW or vw, wp.viewportRTH or vh
+            local m = wp.blitMatrix
+            m:Identity()
+            m:SetField( 1, 1, rtw / vw )
+            m:SetField( 2, 2, rth / vh )
+            m:SetField( 1, 4, -vx / vw )
+            m:SetField( 2, 4, -vy / vh )
+            wp.matViewUV:SetMatrix( "$basetexturetransform", m )
             wp.matViewUV:SetTexture( "$basetexture", texture )
-            cam.Start2D()
-                surface.SetDrawColor( 255, 255, 255, transparency > 0 and transparency or 255 )
-                surface.SetMaterial( wp.matViewUV )
-                surface.DrawTexturedRect( 0, 0, vw, vh )
-            cam.End2D()
+            render.SetMaterial( wp.matViewUV )
+            render.SetColorModulation( 1, 1, 1 )
+            render.SetBlend( transparency > 0 and ( transparency / 255 ) or 1 )
+            -- DrawScreenQuad paints the whole framebuffer, gated only by the stencil. In
+            -- stereoscopy/VR both eyes share one buffer and the stencil isn't cleared between
+            -- them, so without this the second eye's blit bleeds parallax-shifted content into
+            -- the first eye's still-stencilled opening. Confine it to this eye's rect (the full
+            -- screen in mono, so a no-op there).
+            render.SetScissorRect( vx, vy, vx + vw, vy + vh, true )
+            render.DrawScreenQuad()
+            render.SetScissorRect( 0, 0, 0, 0, false )
+            render.SetBlend( 1 )
 
             render.SetStencilEnable( false )
         end

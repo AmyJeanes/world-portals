@@ -5,12 +5,10 @@ wp.matTrans = Material( "wp/trans" )
 wp.matInvis = Material( "wp/invis" )
 wp.matView2 = CreateMaterial("WorldPortals", "Core_DX90", {["$basetexture"] = wp.matBlack:GetName(), ["$model"] = "1", ["$nocull"] = "1"})
 
--- Blit material for the exit-view RT. A GMODScreenspace shader samples the RT by
--- absolute framebuffer position, so a stereoscopy/VR eye (a sub-viewport) reads the
--- wrong half; UnlitGeneric drawn over the eye's pixel rect samples the RT across exactly
--- that eye instead (full screen in mono). The blit is a surface.DrawTexturedRect so the
--- draw-color alpha carries portal transparency and each eye stays within its own rect
--- (see cl_init.lua).
+-- Blit material for the exit-view RT. render.DrawScreenQuad (cl_init.lua) fills the active
+-- eye sub-viewport exactly but its UV spans the whole render target, so a stereoscopy/VR eye
+-- reads only its half; the blit remaps the eye's UV slice back to [0..1] via this material's
+-- $basetexturetransform (wp.blitMatrix). $translucent carries portal transparency via SetBlend.
 wp.matViewUV = CreateMaterial("WorldPortals_ViewUV", "UnlitGeneric", {
     ["$basetexture"] = wp.matBlack:GetName(),
     ["$ignorez"] = "1",
@@ -18,6 +16,9 @@ wp.matViewUV = CreateMaterial("WorldPortals_ViewUV", "UnlitGeneric", {
     ["$vertexalpha"] = "1",
     ["$translucent"] = "1",
 })
+
+-- Reused per-eye UV-remap matrix for the RT blit (see cl_init.lua / matViewUV).
+wp.blitMatrix = Matrix()
 
 wp.drawing = true --default portals to not draw
 wp.rendermode = false
@@ -524,6 +525,8 @@ function WorldPortals_RenderView(view)
     local oldViewportY = wp.viewportY
     local oldViewportW = wp.viewportW
     local oldViewportH = wp.viewportH
+    local oldViewportRTW = wp.viewportRTW
+    local oldViewportRTH = wp.viewportRTH
 
     wp.rendermode = nested
     wp.vieworigin = origin
@@ -538,6 +541,10 @@ function WorldPortals_RenderView(view)
     wp.viewportY = v.y or 0
     wp.viewportW = width
     wp.viewportH = height
+    -- The full render target the eye is a sub-viewport of (here ScrW/ScrH is the whole
+    -- g_VR.rt; RealRenderView narrows it to the eye). The blit's UV remap needs it.
+    wp.viewportRTW = ScrW()
+    wp.viewportRTH = ScrH()
     render.RealRenderView(view)
     wp.rendermode = oldRenderMode
     wp.vieworigin = oldViewOrigin
@@ -549,6 +556,8 @@ function WorldPortals_RenderView(view)
     wp.viewportY = oldViewportY
     wp.viewportW = oldViewportW
     wp.viewportH = oldViewportH
+    wp.viewportRTW = oldViewportRTW
+    wp.viewportRTH = oldViewportRTH
 end
 
 render.RenderView = WorldPortals_RenderView
@@ -1118,6 +1127,7 @@ hook.Add( "RenderScene", "WorldPortals_Render", function( plyOrigin, plyAngle, f
     -- which restamps these; this is just the default for the un-overridden mono eye.
     wp.viewportX, wp.viewportY = 0, 0
     wp.viewportW, wp.viewportH = ScrW(), ScrH()
+    wp.viewportRTW, wp.viewportRTH = ScrW(), ScrH()
     wp.renderportals(plyOrigin, plyAngle, ScrW(), ScrH(), fov)
 end )
 
