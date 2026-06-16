@@ -85,8 +85,10 @@ function ENT:Draw()
             -- the interior slides as you look across the portal obliquely) fills the active
             -- eye sub-viewport exactly. Its UV spans the whole render target though, so a
             -- stereoscopy/VR eye would read only its half - remap the eye's UV slice back to
-            -- [0..1] (identity in mono). SetBlend carries portal transparency; the RT's own
-            -- alpha is flattened to 255 upstream.
+            -- [0..1] (identity in mono). Portal transparency rides on the material's $alpha,
+            -- NOT render.SetBlend: matViewUV's $vertexalpha makes DrawScreenQuad's opaque
+            -- vertices win over SetBlend so it never took (transparent portals drew solid).
+            -- The RT's own alpha is flattened to 255 upstream.
             local vx, vy = wp.viewportX or 0, wp.viewportY or 0
             local vw, vh = wp.viewportW or ScrW(), wp.viewportH or ScrH()
             local rtw, rth = wp.viewportRTW or vw, wp.viewportRTH or vh
@@ -100,7 +102,7 @@ function ENT:Draw()
             wp.matViewUV:SetTexture( "$basetexture", texture )
             render.SetMaterial( wp.matViewUV )
             render.SetColorModulation( 1, 1, 1 )
-            render.SetBlend( transparency > 0 and ( transparency / 255 ) or 1 )
+            wp.matViewUV:SetFloat( "$alpha", transparency > 0 and ( transparency / 255 ) or 1 )
             -- DrawScreenQuad paints the whole framebuffer, gated only by the stencil. In
             -- stereoscopy/VR both eyes share one buffer and the stencil isn't cleared between
             -- them, so without this the second eye's blit bleeds parallax-shifted content into
@@ -109,7 +111,7 @@ function ENT:Draw()
             render.SetScissorRect( vx, vy, vx + vw, vy + vh, true )
             render.DrawScreenQuad()
             render.SetScissorRect( 0, 0, 0, 0, false )
-            render.SetBlend( 1 )
+            wp.matViewUV:SetFloat( "$alpha", 1 )
 
             render.SetStencilEnable( false )
         end
