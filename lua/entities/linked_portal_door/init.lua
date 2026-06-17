@@ -5,7 +5,6 @@ AddCSLuaFile( "shared.lua" )
 include( "shared.lua" )
 
 AccessorFunc( ENT, "partnername", "PartnerName" )
-AccessorFunc( ENT, "enableteleport", "EnableTeleport", FORCE_BOOL )
 
 util.AddNetworkString("WorldPortals_VRMod_SetAngle")
 util.AddNetworkString("WorldPortals_Teleport")

@@ -206,6 +206,16 @@ local function syncAppearance(rec)
     end
 end
 
+-- Clip via the entity's own persistent clip plane, NOT render.PushCustomClipPlane: the
+-- latter is only active within the main-view Push/Pop, so the engine's separate shadow-
+-- depth pass never sees it and the shadow spills across the portal uncut. SetRenderClipPlane
+-- rides on the entity, so the engine applies it in every pass - model and cast shadow alike -
+-- slicing the shadow to the same half as the visible body. Disabled again on teardown.
+local function clipToHalf(ent, nrm, d)
+    ent:SetRenderClipPlane(nrm, d)
+    ent:SetRenderClipPlaneEnabled(true)
+end
+
 -- Clip the real entity to its entry half, recomputing the entry plane here at the draw
 -- so it tracks a fast-moving portal (mirror of the ghost's exit plane). Forwards the
 -- studio render flags to DrawModel and any chained override (e.g. the prop-spawn
@@ -213,15 +223,12 @@ end
 local function makeOriginalOverride(rec)
     return function(self, flags)
         updateEntryPlane(rec)
-        local oldEC = render.EnableClipping(true)
-        render.PushCustomClipPlane(rec.entryNrm, rec.entryD)
-            if rec.savedRenderOverride then
-                rec.savedRenderOverride(self, flags)
-            else
-                self:DrawModel(flags)
-            end
-        render.PopCustomClipPlane()
-        render.EnableClipping(oldEC)
+        clipToHalf(self, rec.entryNrm, rec.entryD)
+        if rec.savedRenderOverride then
+            rec.savedRenderOverride(self, flags)
+        else
+            self:DrawModel(flags)
+        end
     end
 end
 
@@ -282,10 +289,11 @@ local function makeGhostOverride(rec)
     return function(self, flags)
         local ent = rec.ent
         if not IsValid(ent) then return end
-        -- The shadow-depth pass (projected textures, e.g. a lamp) calls this override
-        -- too; drawing there casts a ghost shadow that DrawShadow(false) can't stop - it
-        -- doesn't gate a manual DrawModel. Skip the pass so the ghost stays shadowless.
-        if bit.band(flags, STUDIO_SHADOWDEPTHTEXTURE) ~= 0 then return end
+        -- The local player never sees their own shadow, so keep their ghost shadowless:
+        -- the shadow-depth pass calls this override, and skipping it suppresses the cast
+        -- (DrawShadow(false) alone can't - it doesn't gate a manual DrawModel). Everyone
+        -- else's ghost casts a shadow, clipped to the exit half by clipToHalf below.
+        if rec.isLocalPlayer and bit.band(flags, STUDIO_SHADOWDEPTHTEXTURE) ~= 0 then return end
         if localGhostIsCutaway(rec) then return end
         if ghostDrawVetoed(rec, self) then return end
         -- Past GHOST_GRACE the throttled (25Hz) scan hasn't removed this ghost yet, but you
@@ -307,17 +315,18 @@ local function makeGhostOverride(rec)
             self:SetupBones()
         end
         updateExitPlane(rec)
+        clipToHalf(self, rec.exitNrm, rec.exitD)
         local c = ent:GetColor()
         local oldBlend = render.GetBlend()
-        local oldEC = render.EnableClipping(true)
-        render.PushCustomClipPlane(rec.exitNrm, rec.exitD)
-            render.SetColorModulation(c.r / 255, c.g / 255, c.b / 255)
-            render.SetBlend(c.a / 255)
-            self:DrawModel(flags)
-            render.SetColorModulation(1, 1, 1)
-            render.SetBlend(oldBlend)
-        render.PopCustomClipPlane()
-        render.EnableClipping(oldEC)
+        render.SetColorModulation(c.r / 255, c.g / 255, c.b / 255)
+        render.SetBlend(c.a / 255)
+        self:DrawModel(flags)
+        render.SetColorModulation(1, 1, 1)
+        render.SetBlend(oldBlend)
+
+        -- Flag that the ghost has actually rendered; the scan creates its sun shadow once it has
+        -- (CreateShadow no-ops on a never-drawn model and must run in the game loop, not mid-render).
+        rec.hasDrawn = true
     end
 end
 
@@ -330,38 +339,33 @@ local function makeWeaponGhostOverride(rec)
     return function(self, flags)
         local w = rec.weapon
         if not IsValid(w) then return end
-        if bit.band(flags, STUDIO_SHADOWDEPTHTEXTURE) ~= 0 then return end  -- no shadow-depth draw, so no weapon-ghost shadow (see makeGhostOverride)
+        if rec.isLocalPlayer and bit.band(flags, STUDIO_SHADOWDEPTHTEXTURE) ~= 0 then return end  -- local player's own ghost stays shadowless (see makeGhostOverride)
         if localGhostIsCutaway(rec) then return end
         if ghostDrawVetoed(rec, self) then return end
         if SysTime() - rec.lastSeen > GHOST_GRACE then return end  -- stop at grace, no bind-pose flash (see makeGhostOverride)
         copyBonesThroughPortal(rec, w, self)
         updateExitPlane(rec)
+        clipToHalf(self, rec.exitNrm, rec.exitD)
         local c = w:GetColor()
         local oldBlend = render.GetBlend()
-        local oldEC = render.EnableClipping(true)
-        render.PushCustomClipPlane(rec.exitNrm, rec.exitD)
-            render.SetColorModulation(c.r / 255, c.g / 255, c.b / 255)
-            render.SetBlend(c.a / 255)
-            self:DrawModel(flags)
-            render.SetColorModulation(1, 1, 1)
-            render.SetBlend(oldBlend)
-        render.PopCustomClipPlane()
-        render.EnableClipping(oldEC)
+        render.SetColorModulation(c.r / 255, c.g / 255, c.b / 255)
+        render.SetBlend(c.a / 255)
+        self:DrawModel(flags)
+        render.SetColorModulation(1, 1, 1)
+        render.SetBlend(oldBlend)
+        rec.weaponHasDrawn = true   -- the scan creates its shadow once drawn (see makeGhostOverride)
     end
 end
 
 local function makeWeaponOriginalOverride(rec)
     return function(self, flags)
         updateEntryPlane(rec)
-        local oldEC = render.EnableClipping(true)
-        render.PushCustomClipPlane(rec.entryNrm, rec.entryD)
-            if rec.weaponSavedOverride then
-                rec.weaponSavedOverride(self, flags)
-            else
-                self:DrawModel(flags)
-            end
-        render.PopCustomClipPlane()
-        render.EnableClipping(oldEC)
+        clipToHalf(self, rec.entryNrm, rec.entryD)
+        if rec.weaponSavedOverride then
+            rec.weaponSavedOverride(self, flags)
+        else
+            self:DrawModel(flags)
+        end
     end
 end
 
@@ -371,10 +375,13 @@ local function clearWeapon(rec)
     rec.weaponGhost = nil
     if IsValid(rec.weapon) and rec.weapon.RenderOverride == rec.weaponOriginalOverride then
         rec.weapon.RenderOverride = rec.weaponSavedOverride
+        rec.weapon:SetRenderClipPlaneEnabled(false)
     end
     rec.weapon = nil
     rec.weaponModel = nil
     rec.weaponSavedOverride = nil
+    rec.weaponHasDrawn = nil      -- a new weapon ghost re-establishes its shadow
+    rec.weaponShadowReady = nil
 end
 
 -- Keep the weapon sub-ghost in step with the NPC/player's active weapon. The
@@ -397,7 +404,7 @@ local function updateWeapon(rec)
         if not IsValid(wc) then return end
         wc.WPIsGhost = true
         wc:SetNoDraw(false)
-        wc:DrawShadow(false)
+        wc:DrawShadow(not rec.isLocalPlayer)   -- CreateShadow below once it has drawn (see startStraddle)
         wc.RenderOverride = makeWeaponGhostOverride(rec)
         rec.weaponGhost = wc
         rec.weaponModel = model
@@ -416,6 +423,13 @@ local function updateWeapon(rec)
         rec.weaponGhost:SetPos(rec.posBuf)
         rec.weaponGhost:SetAngles(rec.angBuf)
         rec.weaponGhost:SetSkin(w:GetSkin())
+
+        -- Sun/RTT shadow once the weapon ghost has drawn, same as the body ghost (see updateStraddle):
+        -- the Think re-renders it each frame via MarkShadowAsDirty so it tracks the hand.
+        if rec.weaponHasDrawn and not rec.weaponShadowReady and not rec.isLocalPlayer then
+            rec.weaponShadowReady = true
+            rec.weaponGhost:CreateShadow()
+        end
     end
 end
 
@@ -434,6 +448,9 @@ local function endStraddle(rec)
     if IsValid(rec.ent) and rec.ent.RenderOverride == rec.originalOverride then
         rec.ent.RenderOverride = rec.savedRenderOverride
     end
+    -- The entry clip rides on the entity, so it must be turned off or the prop stays
+    -- half-clipped (body and shadow) once it leaves the portal.
+    if IsValid(rec.ent) then rec.ent:SetRenderClipPlaneEnabled(false) end
     clearWeapon(rec)
     wp.ghosts[rec.ent] = nil
 end
@@ -446,9 +463,11 @@ local function startStraddle(ent, portal)
         isTranslucent(ent) and RENDERGROUP_TRANSLUCENT or RENDERGROUP_OPAQUE)
     if not IsValid(ghost) then return nil end
 
+    local isLocalPlayer = ent == LocalPlayer()
     ghost.WPIsGhost = true
     ghost:SetNoDraw(false)
-    ghost:DrawShadow(false)
+    -- Never draw shadows for the local player as you cannot normally see your own shadow
+    ghost:DrawShadow(not isLocalPlayer)
 
     -- The PlayerColor material proxy reads ent:GetPlayerColor(); SetPlayerColor
     -- ERRORS on a ClientsideModel, so override the getter instead (the proxy calls
@@ -462,6 +481,7 @@ local function startStraddle(ent, portal)
         portal = portal,
         exit = exit,
         ghost = ghost,
+        isLocalPlayer = isLocalPlayer,
         skeletal = ent:IsRagdoll() or ent:IsNPC() or ent:IsPlayer(),
         translucent = isTranslucent(ent),
         lastSeen = SysTime(),
@@ -497,6 +517,17 @@ local function updateStraddle(rec, now)
     -- Pose here only refreshes the ghost's cull bounds between draws; the overrides
     -- pose + plane for the actual draw.
     poseGhost(rec)
+
+    -- Give the ghost its sun/RTT shadow once it has actually rendered: CreateShadow no-ops mid-render
+    -- and on a never-drawn ClientsideModel, so do it here in the game loop after the override flagged
+    -- hasDrawn. The per-frame MarkShadowAsDirty (in the Think) re-renders it so it tracks the prop and
+    -- grows as it emerges; SetRenderClipPlane trims it to the exit half. Once only - CreateShadow per
+    -- frame is severe lag. Skipped for the local player's own ghost (it stays shadowless).
+    if rec.hasDrawn and not rec.shadowReady and not rec.isLocalPlayer then
+        rec.shadowReady = true
+        rec.ghost:CreateShadow()
+    end
+
     syncAppearance(rec)
     ensureOriginalOverride(rec)
     updateWeapon(rec)
@@ -577,6 +608,19 @@ hook.Add("Think", "WorldPortals_Ghosts", function()
             for _, rec in pairs(wp.ghosts) do endStraddle(rec) end
         end
         return
+    end
+
+    -- Keep each ghost's sun/RTT shadow re-rendering every frame. A ClientsideModel posed via
+    -- SetPos/SetBoneMatrix only re-renders its shadow when its angle changes - pure translation
+    -- leaves it frozen at its last extent, so the shadow wouldn't grow as the prop slides through.
+    -- MarkShadowAsDirty forces the re-render; it's light (re-render, not recreate - CreateShadow per
+    -- frame is severe lag). Gated on shadowReady (the shadow exists); the local player's own ghost is
+    -- skipped (it has no shadow).
+    for _, rec in pairs(wp.ghosts) do
+        if not rec.isLocalPlayer then
+            if rec.shadowReady and IsValid(rec.ghost) then rec.ghost:MarkShadowAsDirty() end
+            if rec.weaponShadowReady and IsValid(rec.weaponGhost) then rec.weaponGhost:MarkShadowAsDirty() end
+        end
     end
 
     local now = SysTime()

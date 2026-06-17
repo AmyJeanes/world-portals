@@ -115,10 +115,10 @@ local function predictPlayerTeleport(ply, mv, cmd)
         -- it, walking backward through a portal mangles your motion direction.
         mv:SetAngles(clampedAng)
         cmd:SetViewAngles(clampedAng)
-        -- Every pass (resim included): resets the AbsOrigin interp cache and
-        -- makes ply:GetPos() report the destination before wp-teleport runs, so
-        -- a consumer unstick resolves against it. First-time-only here left the
-        -- player stuck at the raw transform for ~RTT at high ping.
+        -- Every pass (resim included): resets the AbsOrigin interp cache and makes
+        -- ply:GetPos() report the destination before wp-teleport runs, so a consumer
+        -- unstick resolves against it. First-time-only would leave the player stuck
+        -- at the raw transform for ~RTT at high ping.
         ply:SetPos(newPos)
         -- SetEyeAngles actually rotates the camera (cmd:SetViewAngles alone
         -- no-ops). Client + first-time only: a server write or a resim re-write

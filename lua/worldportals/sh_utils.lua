@@ -1,12 +1,5 @@
 -- Utils
 
--- Checks if an object's position is behind a plane
-function wp.IsBehind( object_pos, plane_pos, plane_forward )
-    return plane_forward.x * (object_pos.x - plane_pos.x)
-        + plane_forward.y * (object_pos.y - plane_pos.y)
-        + plane_forward.z * (object_pos.z - plane_pos.z) < 0
-end
-
 ---@return number
 local function arctan2(y, x)
     if ((x ~= 0) or (y ~= 0)) then

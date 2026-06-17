@@ -18,7 +18,6 @@ This is the **base layer** other addons build on. The main consumer is `AmyJeane
 
 ### `wp.*` API (in `sh_utils.lua` unless noted)
 
-- `wp.IsBehind(pos, plane_pos, plane_fwd)` — half-space test.
 - `wp.IsLookingAt(portal, portal_pos, view_pos, view_ang, view_fov)` — frustum/cone test to skip off-screen portals.
 - `wp.DistanceToPlane(pos, plane_pos, plane_fwd)` — signed distance.
 - `wp.TransformPortalPos/Angle(x, portal, exit)` — through-portal transform (WorldToLocal → 180° yaw mirror → LocalToWorld, with `GetExitPosOffset`/`GetExitAngOffset`).
@@ -27,7 +26,7 @@ This is the **base layer** other addons build on. The main consumer is `AmyJeane
 
 Allocation-free variants in `cl_render.lua` read per-portal cached basis scalars instead of calling engine `WorldToLocal`: `wp.TransformPortalPosInto(out, ...)` / `wp.TransformPortalAngleInto(out, ...)` write into a caller-owned Vector/Angle for hot paths.
 
-`cl_render.lua` state: materials `wp.matBlack/matTrans/matInvis/matView/matView2`; `wp.drawing` (re-entrancy guard set during `render.RenderView`); `wp.rendermode` (true inside `RealRenderView`); `wp.renderparent` (scan-phase: the portal whose exit-view is being filled, nil at top level - the counterpart to draw-phase `wp.drawingent`, which is nil during the scan, so a `wp-shouldrender` veto reads `wp.renderparent` for render direction); `wp.shouldrender(portal, ...)` (visibility decision + `wp-shouldrender` hook); `wp.renderportals(...)`.
+`cl_render.lua` state: materials `wp.matBlack/matTrans/matInvis/matView2` + `wp.matViewUV`/`wp.uvRemapMatrix` (paint the exit-view RT into the opening); `wp.drawing` (re-entrancy guard set during `render.RenderView`); `wp.rendermode` (true inside `RealRenderView`); `wp.renderparent` (scan-phase: the portal whose exit-view is being filled, nil at top level - the counterpart to draw-phase `wp.drawingent`, which is nil during the scan, so a `wp-shouldrender` veto reads `wp.renderparent` for render direction); `wp.shouldrender(portal, ...)` (visibility decision + `wp-shouldrender` hook); `wp.renderportals(...)`.
 
 `wp.portals` (in `sh_portals.lua`) is a maintained array of live portals — registered from each portal's shared `Initialize`, deregistered via `EntityRemoved`, rebuilt fresh on change (never mutated in place, so a held reference survives mid-iteration), re-discovered on hot-reload. Hot paths iterate it instead of `ents.FindByClass` per tick/frame.
 
@@ -40,6 +39,8 @@ Allocation-free variants in `cl_render.lua` read per-portal cached basis scalars
 ### Stencil rendering pipeline (`cl_render.lua`) — most fragile piece
 
 Per frame: `render.RenderView` is monkey-patched to first render every portal's exit-view to its RT (recursively; `wp.drawing` guards prevent infinite recursion), then pass through to `RealRenderView`. `wp.renderportals` iterates portals `wp.shouldrender` accepts: push RT → push a clip plane at the exit back-face → compute camera by `TransformPortal*`-ing the view → set `zfar` from portal/exit distance → recursive `RenderView` with `viewid = 1` (`VIEW_3DSKY`, the trick that avoids HUD/postprocess). Phys-gun glow is zeroed during the loop. `RenderScene` calls `renderportals` for the eye view; `PreDrawHalos` returns false while `wp.drawing`. The order and the `wp.drawing`/`wp.rendermode` guards are why nearly every callback checks them first.
+
+Stereoscopy/VR render each eye as its own top-level `render.RenderView`, so portal RTs fill per-eye: `frameRenderedChains` clears per eye, the overlap cull measures in the eye's view `width/height` (not `ScrW/ScrH`, which shifts under a pushed RT), and the d>1 RT pool is partitioned by resolution (a named `GetRenderTarget` is size-locked, so the mono pass and a smaller eye need separate surfaces - sharing one leaked immortal surfaces and crashed). The exit-view RT composites via `render.DrawScreenQuad` in the 3D context (`cl_init.lua`), UV-remapping the eye's slice of the render target and scissoring to the eye rect (a no-op in mono); an eye that passes no `fov` gets the engine's Hor+ aspect-corrected value so the RT projects identically. VR also skips the wasted full-screen desktop pass (`vrmod.IsPlayerInVR()` in `RenderScene`).
 
 ### Predicted player teleport (`sh_teleport.lua`)
 

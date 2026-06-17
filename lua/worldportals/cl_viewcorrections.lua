@@ -3,9 +3,9 @@
 -- Predict-lerp window: after a local teleport the engine's snapshot interp
 -- pulls ply:GetPos() through wild values for a few frames (blank/sky frames).
 -- While armed, CalcView shifts the camera by (NetworkOrigin - GetPos) to park
--- it at the server's authoritative pos until GetPos catches up. Disarm is a
--- pure timeout (convergence-detection fired too early on the non-monotonic
--- drift). SysTime, not CurTime (CurTime in SetupMove is the future tick time).
+-- it at the server's authoritative pos until GetPos catches up. Disarm is a pure
+-- timeout, not convergence detection (which fires early on the non-monotonic drift).
+-- SysTime, not CurTime (CurTime in SetupMove is the future tick time).
 local PREDICT_TIMEOUT = 0.5
 
 -- Window for stripping the engine's post-teleport stair smoothing.

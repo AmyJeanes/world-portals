@@ -18,28 +18,36 @@ function ENT:DrawPortal()
 end
 
 function ENT:Draw()
+    -- Bail unless this portal has something to show this frame.
     if not (wp.IsEnabled and wp.IsEnabled()) then return end
     if not self:GetOpen() then return end
+    -- Inside another portal's RT pass that isn't drawing nested portals.
     if wp.drawing and not wp.drawportalsinview then return end
 
+    -- shouldrender = show the through-view; drawblack = draw a solid black face instead.
     local shouldrender,drawblack=wp.shouldrender(self, wp.vieworigin, wp.viewangle, wp.viewfov)
     if not (shouldrender or drawblack) then return end
 
+    -- Need a destination: a linked exit portal, or a false-world.
     local exitPortal = self:GetExit()
     local falseWorld = self:GetFalseWorld()
     if not IsValid(exitPortal) and not (falseWorld and falseWorld ~= "") then return end
 
-    -- Skip if our chain was culled this frame; the RT holds stale contents.
+    -- Our exit-view RT got culled this frame, so it holds stale pixels - skip.
     if shouldrender and not wp.IsPortalChainRendered(self) then return end
 
     hook.Call("wp-predraw", GAMEMODE, self, exitPortal)
 
-    local texture, width, height, depth = wp.GetPortalDrawTexture(self)
+    -- The RT holding our exit view. At depth 1, expose it as the entity's texture so
+    -- consumers can read portal:GetTexture().
+    local texture, depth = wp.GetPortalDrawTexture(self)
     if depth == 1 then
         self:SetTexture( texture )
     end
 
     if wp.rendermode then
+        -- Being drawn inside another portal's view. Stencils don't nest cleanly, so skip
+        -- the dance and put the exit-view texture flat on the face (black if it won't render).
         if shouldrender then
             wp.matView2:SetTexture( "$basetexture", texture )
             render.SetMaterial( wp.matView2 )
@@ -48,7 +56,10 @@ function ENT:Draw()
         end
         self:DrawPortal()
     else
+        -- Top-level eye view: the stencil dance. Stamp the opening shape into the stencil,
+        -- then paint the exit view into just that shape.
         if shouldrender then
+            -- Stamp: make every pixel the face covers get stencil = 1.
             render.ClearStencil()
             render.SetStencilEnable( true )
 
@@ -62,6 +73,8 @@ function ENT:Draw()
             render.SetStencilCompareFunction( STENCIL_ALWAYS )
         end
 
+        -- Draw the visible face - see-through if the portal has transparency, else solid
+        -- black. This same pass writes the stamp above.
         local transparency = self:GetTransparency()
         if transparency > 0 then
             render.SetMaterial( wp.matTrans )
@@ -73,20 +86,40 @@ function ENT:Draw()
         self:DrawPortal()
 
         if shouldrender then
+            -- Now fill the stencilled opening (where stencil == 1) with the exit view.
             render.SetStencilCompareFunction( STENCIL_EQUAL )
 
-            wp.matView:SetTexture( "$basetexture", texture )
+            -- In stereo/VR this eye only draws into part of the screen, so DrawScreenQuad
+            -- would sample only the matching part of the exit-view texture (half a view,
+            -- shifted). This transform rescales the texture lookup so the eye samples the
+            -- whole view. In mono the eye is the whole screen, so it changes nothing.
+            local vx, vy = wp.viewportX or 0, wp.viewportY or 0
+            local vw, vh = wp.viewportW or ScrW(), wp.viewportH or ScrH()
+            local rtw, rth = wp.viewportRTW or vw, wp.viewportRTH or vh
+            local m = wp.uvRemapMatrix
+            m:Identity()
+            m:SetField( 1, 1, rtw / vw )   -- rescale horizontally (1.0 in mono)
+            m:SetField( 2, 2, rth / vh )   -- rescale vertically
+            m:SetField( 1, 4, -vx / vw )   -- shift onto this eye's left edge (0 in mono)
+            m:SetField( 2, 4, -vy / vh )   -- shift onto this eye's top edge
+            wp.matViewUV:SetMatrix( "$basetexturetransform", m )
+            wp.matViewUV:SetTexture( "$basetexture", texture )
+            render.SetMaterial( wp.matViewUV )
+            render.SetColorModulation( 1, 1, 1 )
 
-            if transparency > 0 then
-                cam.Start2D()
-                    surface.SetDrawColor(255,255,255,transparency)
-                    surface.SetMaterial( wp.matView )
-                    surface.DrawTexturedRect( 0, 0, width, height )
-                cam.End2D()
-            else
-                render.SetMaterial( wp.matView )
-                render.DrawScreenQuad()
-            end
+            -- Transparency goes through $alpha, not render.SetBlend: $vertexalpha makes
+            -- DrawScreenQuad's own (opaque) vertex alpha override SetBlend, so it never took.
+            wp.matViewUV:SetFloat( "$alpha", transparency > 0 and ( transparency / 255 ) or 1 )
+
+            -- DrawScreenQuad fills the whole buffer wherever the stencil passes. In stereo/VR
+            -- the eyes share that buffer and stencil, so clip to this eye or the second eye
+            -- bleeds into the first's opening (full-screen, so a no-op, in mono).
+            render.SetScissorRect( vx, vy, vx + vw, vy + vh, true )
+            -- 3D context: cam.Start2D would skew the fill, so the interior slides as you
+            -- look across the portal at an angle.
+            render.DrawScreenQuad()
+            render.SetScissorRect( 0, 0, 0, 0, false )
+            wp.matViewUV:SetFloat( "$alpha", 1 )
 
             render.SetStencilEnable( false )
         end
