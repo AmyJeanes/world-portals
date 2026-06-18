@@ -125,9 +125,9 @@ local function getChainKey(depth, camPos, portal)
 end
 
 -- Key for the render-decision cache. Unlike getChainKey, always folds the camera
--- in, so a second d=1 view in the same frame (a TARDIS scanner, a security
--- monitor) gets its own decision instead of reusing the eye view's. Separate
--- per-portal key fields so the two caches can't clobber each other.
+-- in, so a second d=1 view in the same frame (a security monitor, an RT camera)
+-- gets its own decision instead of reusing the eye view's. Separate per-portal
+-- key fields so the two caches can't clobber each other.
 local function getDecisionKey(depth, camPos, portal)
     if not camPos then return getChainKey(depth, nil, portal) end
     local qx, qy, qz = quantizePos(camPos)
@@ -364,6 +364,23 @@ end
 local frameRenderedChains = {}
 local frameShouldRenderCache = {}
 
+-- Pooled scratch tables for the per-view frameRenderedChains swap below - pooled, not one
+-- shared table, so a render nested inside another's scene draw stays isolated.
+local chainTablePool = {}
+local function acquireChainTable()
+    local n = #chainTablePool
+    if n > 0 then
+        local t = chainTablePool[n]
+        chainTablePool[n] = nil
+        return t
+    end
+    return {}
+end
+local function releaseChainTable(t)
+    for k in pairs(t) do t[k] = nil end
+    chainTablePool[#chainTablePool + 1] = t
+end
+
 function wp.IsPortalChainRendered(portal, depth, camPos)
     depth = depth or wp.drawtexturedepth or 1
     camPos = camPos or wp.vieworigin or EyePos()
@@ -492,11 +509,14 @@ function WorldPortals_RenderView(view)
     -- also route through render.RenderView - has it false and needs the stencil path.
     local nested = wp.drawing
 
+    -- Each top-level view (stereo/VR eye, or a secondary RT view like a monitor) needs its own
+    -- chain set: the d=1 key omits the camera, so sharing lets a later view reuse an earlier
+    -- one's RTs. Swap a fresh set in and restore the caller's after RealRenderView, so a
+    -- secondary render can't wipe the chains the eye view's post-RenderScene draw relies on.
+    local savedChains
     if not nested then
-        -- Each top-level view (each stereo/VR eye is its own render.RenderView) needs its
-        -- own RTs. frameRenderedChains dedups within one view's recursion, but its d=1 key
-        -- omits the camera - so without clearing, a later eye reuses the first eye's RTs.
-        for k in pairs(frameRenderedChains) do frameRenderedChains[k] = nil end
+        savedChains = frameRenderedChains
+        frameRenderedChains = acquireChainTable()
         wp.renderportals(origin, angles, width, height, fov, 1, nil, nil, nil, nil, aspect)
     end
 
@@ -543,6 +563,11 @@ function WorldPortals_RenderView(view)
     wp.viewportH = oldViewportH
     wp.viewportRTW = oldViewportRTW
     wp.viewportRTH = oldViewportRTH
+
+    if not nested then
+        releaseChainTable(frameRenderedChains)
+        frameRenderedChains = savedChains
+    end
 end
 
 render.RenderView = WorldPortals_RenderView
