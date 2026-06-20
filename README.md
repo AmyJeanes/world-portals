@@ -1,11 +1,11 @@
-Garry's Mod World Portals
-=============
+world-portals
+=
+World portals inspired by Overv's Portal Project and Portal 2's `linked_portal_door`.
 
-World portals inspired by Overv's Portal Project and Portal 2's linked_portal_door.
+Originally by [@bliptec](https://github.com/bliptec) but now updated and maintained by [@AmyJeanes](https://github.com/AmyJeanes).
 
+Installation
+=
 
-###Status###
-
-* Rendering: almost complete
-* Weapon and trace diversion: just started
-* Entity teleportation: just started
+### Manual installation
+Remove any previous versions then put this folder into Steam/Steamapps/common/garrysmod/garrysmod/addons/
