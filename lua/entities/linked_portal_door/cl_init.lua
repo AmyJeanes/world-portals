@@ -4,9 +4,10 @@ include( "shared.lua" )
 AccessorFunc( ENT, "texture", "Texture" )
 
 function ENT:DrawPortal(exitPortal)
-    if self:GetCustomModel() ~= "" then
+    local customModel = self:GetCustomModel()
+    if customModel ~= "" then
         render.ModelMaterialOverride( wp.matInvis )
-        render.Model({model = self:GetModel(), pos = self:LocalToWorld(self:GetCustomModelPosOffset()), angle = self:LocalToWorldAngles(self:GetCustomModelAngOffset())})
+        render.Model({model = customModel, pos = self:LocalToWorld(self:GetCustomModelPosOffset()), angle = self:LocalToWorldAngles(self:GetCustomModelAngOffset())})
         render.ModelMaterialOverride( nil )
     elseif self:GetThickness() == 0 or hook.Call("wp-allowthickportal", GAMEMODE, self, exitPortal)==false then
         -- Draw the face at the front of the render geometry (recessed for an inverted

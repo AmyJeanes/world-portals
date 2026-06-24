@@ -30,3 +30,10 @@ function table.insert(tbl, position, value) end
 ---@field HitPos Vector
 ---@field Normal Vector
 ---@field StartPos Vector
+
+-- util.GetModelInfo returns the model's render-bound corners in HullMin/HullMax (identical to
+-- Entity:GetModelRenderBounds), but the stub omits them. Add them so reading a model's bounds
+-- from a path - without setting it on an entity - type-checks.
+---@class ModelInfo
+---@field HullMin Vector
+---@field HullMax Vector

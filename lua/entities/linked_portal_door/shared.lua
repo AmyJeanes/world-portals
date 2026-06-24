@@ -42,9 +42,12 @@ end
 function ENT:UpdateRenderBounds()
     if not (self.RenderMin and self.RenderMax) then return end
     local mins, maxs = Vector(self.RenderMin), Vector(self.RenderMax)
-    if self:GetCustomModel() ~= "" then
-        ---@type Vector, Vector
-        local lmn, lmx = self:GetModelRenderBounds()
+    local model = self:GetCustomModel()
+    if model ~= "" then
+        -- Read the model's bounds straight from its file rather than via GetModelRenderBounds, so
+        -- we don't have to SetModel on the entity (which also resets the trigger collision bounds).
+        local info = util.GetModelInfo(model)
+        local lmn, lmx = info and info.HullMin, info and info.HullMax
         if lmn and lmx then
             local off, ang = self:GetCustomModelPosOffset(), self:GetCustomModelAngOffset()
             local corners = {
@@ -160,11 +163,10 @@ function ENT:SetupDataTables()
         if SERVER and not new then wp.DisarmPortal(ent) end
     end)
 
-    -- Apply the model (and so network it) when the CustomModel netvar is set, and re-extend the render
-    -- bounds when the model or its offset/angle change. The recompute is deferred a frame (see
-    -- QueueRenderBoundsUpdate) because the notify fires before the new value is applied.
-    self:NetworkVarNotify("CustomModel", function(ent, _, _, new)
-        if new ~= "" then ent:SetModel(new) end
+    -- Re-extend the render bounds when the model or its offset/angle change. The model itself is
+    -- read by path (render.Model, util.GetModelInfo) and never set on the entity, so there's nothing
+    -- to apply here. Deferred a frame (QueueRenderBoundsUpdate) since the notify fires pre-apply.
+    self:NetworkVarNotify("CustomModel", function(ent)
         ent:QueueRenderBoundsUpdate()
     end)
     self:NetworkVarNotify("CustomModelPosOffset", function(ent)
