@@ -116,23 +116,30 @@ function ENT:Draw()
                 -- the main view once the eyes submerge), which would discard the screen-space fill (a
                 -- quad up at the camera, above water). Lift that clip so the one screen-space fill
                 -- works there too, instead of a separate tessellated-geometry path.
-                local belowWater = rtName == "_rt_waterrefraction" or eyeInWater()
+                local isRefraction = rtName == "_rt_waterrefraction"
+                local belowWater = isRefraction or eyeInWater()
                 local prevClip
                 if belowWater then prevClip = render.EnableClipping( false ) end
 
-                -- In stereo/VR this eye only draws into part of the screen, so DrawScreenQuad
-                -- would sample only the matching part of the exit-view texture (half a view,
-                -- shifted). This transform rescales the texture lookup so the eye samples the
-                -- whole view. In mono the eye is the whole screen, so it changes nothing.
                 local vx, vy = wp.viewportX or 0, wp.viewportY or 0
                 local vw, vh = wp.viewportW or ScrW(), wp.viewportH or ScrH()
-                local rtw, rth = wp.viewportRTW or vw, wp.viewportRTH or vh
                 local m = wp.uvRemapMatrix
                 m:Identity()
-                m:SetField( 1, 1, rtw / vw )   -- rescale horizontally (1.0 in mono)
-                m:SetField( 2, 2, rth / vh )   -- rescale vertically
-                m:SetField( 1, 4, -vx / vw )   -- shift onto this eye's left edge (0 in mono)
-                m:SetField( 2, 4, -vy / vh )   -- shift onto this eye's top edge
+
+                -- The water refraction pass draws into just this eye's viewport with viewport-local
+                -- UVs and its own per-eye stencil, so an identity remap samples the whole exit view
+                -- and no scissor is needed. The main buffer is the opposite: DrawScreenQuad spans the
+                -- whole (both-eyes in stereo/VR) buffer with target-relative UVs, so rescale the lookup
+                -- to this eye's slice and scissor so the other eye's matching stencil region isn't
+                -- filled too. Both are a no-op in mono (one full-screen eye).
+                local useScissor = not isRefraction
+                if useScissor then
+                    local rtw, rth = wp.viewportRTW or vw, wp.viewportRTH or vh
+                    m:SetField( 1, 1, rtw / vw )   -- rescale horizontally (1.0 in mono)
+                    m:SetField( 2, 2, rth / vh )   -- rescale vertically
+                    m:SetField( 1, 4, -vx / vw )   -- shift onto this eye's left edge (0 in mono)
+                    m:SetField( 2, 4, -vy / vh )   -- shift onto this eye's top edge
+                end
                 wp.matViewUV:SetMatrix( "$basetexturetransform", m )
                 wp.matViewUV:SetTexture( "$basetexture", texture )
                 render.SetMaterial( wp.matViewUV )
@@ -140,14 +147,11 @@ function ENT:Draw()
                 -- Transparency goes through $alpha, not render.SetBlend: $vertexalpha makes
                 -- DrawScreenQuad's own (opaque) vertex alpha override SetBlend, so it never took.
                 wp.matViewUV:SetFloat( "$alpha", transparency > 0 and ( transparency / 255 ) or 1 )
-                -- DrawScreenQuad fills the whole buffer wherever the stencil passes. In stereo/VR
-                -- the eyes share that buffer and stencil, so clip to this eye or the second eye
-                -- bleeds into the first's opening (full-screen, so a no-op, in mono).
-                render.SetScissorRect( vx, vy, vx + vw, vy + vh, true )
+                if useScissor then render.SetScissorRect( vx, vy, vx + vw, vy + vh, true ) end
                 -- 3D context: cam.Start2D would skew the fill, so the interior slides as you
                 -- look across the portal at an angle.
                 render.DrawScreenQuad()
-                render.SetScissorRect( 0, 0, 0, 0, false )
+                if useScissor then render.SetScissorRect( 0, 0, 0, 0, false ) end
                 wp.matViewUV:SetFloat( "$alpha", 1 )
 
                 if belowWater then render.EnableClipping( prevClip ) end
