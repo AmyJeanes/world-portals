@@ -1212,3 +1212,18 @@ end )
 hook.Add( "PreDrawHalos", "WorldPortals_Render", function()
     if wp.drawing then return false end
 end )
+
+-- The exit-view clip plane would otherwise slice the 3D skybox (the engine draws it small-scale
+-- near the sky_camera), so drop clipping for the skybox draw only. Water reflections of the 3D
+-- skybox can be missing at certain positions / angles due to an engine bug:
+-- https://github.com/Facepunch/garrysmod-issues/issues/6536
+local skyClipSaved
+hook.Add( "PreDrawSkyBox", "WorldPortals_SkyClip", function()
+    if wp.drawing then skyClipSaved = render.EnableClipping( false ) end
+end )
+hook.Add( "PostDrawSkyBox", "WorldPortals_SkyClip", function()
+    if wp.drawing and skyClipSaved ~= nil then
+        render.EnableClipping( skyClipSaved )
+        skyClipSaved = nil
+    end
+end )
