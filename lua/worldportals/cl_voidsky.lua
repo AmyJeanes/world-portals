@@ -40,8 +40,7 @@ local skyView = {
     dopostprocess = false, bloomtone = false,
     znear = 2, zfar = 56756, viewid = 1,
 }
--- exitPos/exitForward (the exit portal's plane, world space) clip the skybox to the same side the
--- real exit view shows - omitted by the debug overlay, which has no portal.
+
 function wp.RenderVoidSky3D( camOrigin, camAngle, w, h, fov, aspect, exitPos, exitForward )
     local sky = wp.sky3d
     if not sky then return nil end
@@ -58,19 +57,19 @@ function wp.RenderVoidSky3D( camOrigin, camAngle, w, h, fov, aspect, exitPos, ex
     skyView.fov = fov
     skyView.aspectratio = effAspect
 
-    -- skyOrigin can land just inside the skybox's own geometry (the miniature buildings/ground sit
-    -- right where it falls). The 3D scenery still renders fine from there, but the engine skips the
-    -- skybox's 2D sky and leaves it black behind the scenery - flag it so the fill hook paints the
-    -- 2D sky back in during the render below. (Don't just bail to the 2D cube; that loses the
-    -- skyline for a thin band as an exit camera grazes the skybox surface.)
+    -- skyOrigin is our camera inside the miniature skybox, and it can land buried in that world's own
+    -- ground or buildings. The scenery still draws, but the engine won't render the sky from inside
+    -- solid, so the backdrop goes black behind it - flag that so the fill hook repaints the 2D sky.
+    -- (Falling back to the flat 2D cube instead would drop the parallax skyline for the thin band
+    -- where skyOrigin only grazes the surface.)
     wp.renderingSkyInSolid = bit.band( util.PointContents( skyOrigin ), CONTENTS_SOLID ) ~= 0
     wp.renderingSkyOrigin = skyOrigin
 
-    -- A buried exit camera sits inside the wall/foliage the portal is set into, so the skybox would
-    -- otherwise render that geometry between the camera and the opening (the "giant leaf" over the
-    -- portal). Clip it the same way the exit world view does - at the portal plane - so only what's
-    -- in front of the opening (the skyline) survives. It's the exit plane shrunk into skybox space -
-    -- same facing direction (scaling doesn't rotate it), positioned at the scaled-down opening.
+    -- Clip off any geometry between the camera and the portal opening, just like a normal portal's exit
+    -- view does: the exit camera can sit buried inside whatever the portal is set into, and we only want
+    -- the skyline in front of the opening. The plane is the exit plane (exitPos/exitForward, world space)
+    -- shrunk into skybox space - same facing direction (scaling doesn't rotate it), positioned at the
+    -- scaled-down opening. The debug overlay has no portal, so it passes neither and skips this.
     local clip = exitPos and exitForward
     local oldClip
     if clip then
@@ -117,10 +116,9 @@ hook.Add( "SetupWorldFog", "WorldPortals_VoidSky3D", function()
     return true
 end )
 
--- Debug overlay (worldportals_debug_voidsky): pre-render the reconstruction at frame start, so its
--- full-scene pre-pass can't corrupt the main view's depth/state (a mid-frame render blanked the
--- viewmodel and dropped geometry). WorldPortals_VoidSkyDebug then only draws the result. Separate
--- RenderScene hook from the portal render; the in-portal pre-pass is driven by renderportals.
+-- Debug overlay (worldportals_debug_voidsky): render the reconstruction here, before the main view
+-- draws, because rendering a whole scene mid-frame corrupts that view. The VoidSkyDebug hook below
+-- just paints the result. Its own RenderScene hook; the in-portal pre-pass is driven from renderportals.
 hook.Add( "RenderScene", "WorldPortals_VoidSkyOverlay", function( plyOrigin, plyAngle, fov )
     -- In VR vrmod renders the eyes itself, so this full-screen pass shows nothing - skip it.
     if vrmod and vrmod.IsPlayerInVR() then return end
@@ -131,9 +129,8 @@ hook.Add( "RenderScene", "WorldPortals_VoidSkyOverlay", function( plyOrigin, ply
     end
 end )
 
--- The six faces of the 2D skybox cube (the fallback when a map has no 3D skybox, and the sky drawn
--- behind the 3D scenery). Each face: texture suffix, the direction from the camera to it, and the
--- quad's rotation in degrees.
+-- The six faces of the 2D skybox cube - the map's main sky. Each face: texture suffix, the direction
+-- from the camera to it, and the quad's rotation in degrees.
 local SKY_FACE_DEFS = {
     { "bk", Vector(0, 1, 0),  180 }, { "ft", Vector(0, -1, 0), 180 },
     { "lf", Vector(-1, 0, 0), 180 }, { "rt", Vector(1, 0, 0),  180 },
