@@ -414,6 +414,8 @@ local function updateWeapon(rec)
         if not IsValid(wc) then return end
         wc.WPIsGhost = true
         wc:SetNoDraw(false)
+        -- Some weapons use material proxies that rely on the owner being set (e.g. the physgun core colour)
+        wc:SetOwner(ent)
         wc:DrawShadow(not rec.isLocalPlayer)   -- CreateShadow below once it has drawn (see startStraddle)
         wc.RenderOverride = makeWeaponGhostOverride(rec)
         rec.weaponGhost = wc
