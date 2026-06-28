@@ -22,7 +22,6 @@ wp.uvRemapMatrix = Matrix()
 
 wp.drawing = true --default portals to not draw
 wp.rendermode = false
-local WEAPON_COLOR_OFF = Vector(0, 0, 0)
 local THICK_PORTAL_POS = Vector()
 
 -- Reused across every render.RenderView call this frame to avoid allocating
@@ -715,14 +714,6 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
     -- render at it so the through-portal view lines up vertically with the eye scene.
     aspect = aspect or (width / height)
 
-    -- Suppress phys gun glow/beam during the portal renders.
-    local ply = LocalPlayer()
-    local oldWepColor
-    if depth == 1 then
-        oldWepColor = ply:GetWeaponColor()
-        ply:SetWeaponColor( WEAPON_COLOR_OFF )
-    end
-
     -- Priority-order only the top level (see getSortedPortals); nested levels keep raw order.
     local sortedPortals, portalCount
     if depth == 1 then
@@ -951,9 +942,6 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
                 wp.ReleasePoly(cumulativePoly)
             end
         end
-    end
-    if depth == 1 and oldWepColor then
-        ply:SetWeaponColor( oldWepColor )
     end
     wp.renderdepth = oldRenderDepth
     wp.renderparent = oldRenderParent
