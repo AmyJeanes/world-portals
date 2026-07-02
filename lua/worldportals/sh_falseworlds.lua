@@ -1,5 +1,6 @@
 -- False worlds
 
+---@type table<string, wp.FalseWorld>
 wp.falseworlds = wp.falseworlds or {}
 -- Client-only cache of long-lived ClientsideModel parts keyed by false-world id.
 -- Kept separate from wp.falseworlds so re-registering doesn't have to fight table.Copy.
@@ -44,6 +45,15 @@ end
 ---@field pos Vector?
 ---@field ang Angle?
 ---@field scale Vector?
+
+---@class wp.FalseWorld
+---@field id string
+---@field pos Vector?
+---@field ang Angle?
+---@field baselight Vector?
+---@field skybox wp.FalseWorldPart?
+---@field models table<string, wp.FalseWorldPart>
+---@field lights LocalLight[]?
 
 -- Apply state that's static for the lifetime of the cached entity.
 local function setupPart( rawpart, ent )
