@@ -111,9 +111,13 @@ local function predictPlayerTeleport(ply, mv, cmd)
         local clampedAng = Angle(newAng.p, newAng.y, 0)
         mv:SetOrigin(newPos)
         mv:SetVelocity(newVel)
-        -- mv:SetAngles is what gamemovement reads for W/S/A/D direction; without
-        -- it, walking backward through a portal mangles your motion direction.
+        -- Some movement code reads the entity velocity, not the move's, so mirror
+        -- there too. SetLocalVelocity: SetAbsVelocity no-ops for a predicted player.
+        ply:SetLocalVelocity(newVel)
         mv:SetAngles(clampedAng)
+        -- Game movement builds the WASD wish-dir from the move angles, not the view;
+        -- without SetMoveAngles the tick after teleport steers along the old heading.
+        mv:SetMoveAngles(clampedAng)
         cmd:SetViewAngles(clampedAng)
         -- Every pass (resim included): resets the AbsOrigin interp cache and makes
         -- ply:GetPos() report the destination before wp-teleport runs, so a consumer
