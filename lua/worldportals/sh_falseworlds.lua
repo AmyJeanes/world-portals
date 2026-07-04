@@ -11,6 +11,7 @@ local VECTOR_UP = Vector( 0, 0, 1 )
 local ANGLE_ZERO = Angle()
 local ANGLE_YAW_180 = Angle( 0, 180, 0 )
 
+---@api
 function wp.addfalseworld( T )
     if not T.id then
         error( "wp.addfalseworld: missing T.id" )

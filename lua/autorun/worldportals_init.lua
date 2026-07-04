@@ -4,6 +4,7 @@
 ---@class wp
 wp = wp or {}
 
+---@api
 function wp.LoadFolder( folder, noprefix )
     local files = file.Find( folder .. "/*.lua", "LUA" )
     for _, name in ipairs( files ) do

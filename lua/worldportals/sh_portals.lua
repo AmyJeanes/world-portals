@@ -20,6 +20,7 @@ function wp.RegisterPortal(portal)
     rebuild()
 end
 
+---@api
 function wp.UnregisterPortal(portal)
     if not registered[portal] then return end
     registered[portal] = nil

@@ -70,6 +70,7 @@ local VECTOR_ORIGIN = Vector()
 local VECTOR_UP = Vector(0, 0, 1)
 
 -- Transforms a position from one portal to another
+---@api
 function wp.TransformPortalPos( vec, portal, exit_portal )
     local l_vec = portal:WorldToLocal( vec )
     l_vec:Rotate(ANGLE_YAW_180)
@@ -90,6 +91,7 @@ end
 -- 180-yaw mirror -> LocalToWorld pipeline as the position/angle transforms, so
 -- it's a real rotation at any pitch/roll (Euler-angle subtraction would flip
 -- velocity on pitched/rolled pairs).
+---@api
 function wp.TransformPortalVector( vec, portal, exit_portal )
 
     -- Direction-only: zero origin so only the rotation applies. WorldToLocal
@@ -103,6 +105,7 @@ function wp.TransformPortalVector( vec, portal, exit_portal )
 end
 
 --Transforms an angle from one portal to another
+---@api
 function wp.TransformPortalAngle( angle, portal, exit_portal )
 
     local l_angle = portal:WorldToLocalAngles( angle )
@@ -114,6 +117,7 @@ function wp.TransformPortalAngle( angle, portal, exit_portal )
 end
 
 --Returns the first portal hit starting from a source position and given the direction of the vector
+---@api
 function wp.GetFirstPortalHit(source, direction)
     local portal = {
         Entity = nil,

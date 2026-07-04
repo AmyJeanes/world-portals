@@ -76,6 +76,7 @@ function wp.IsEnabled()
     return enabled
 end
 
+---@api
 function wp.GetRecurseDepth()
     return recurseDepth
 end
@@ -84,6 +85,7 @@ function wp.GetPortalRenderDepth()
     return wp.renderdepth or wp.drawingdepth or 0
 end
 
+---@api
 function wp.IsRenderingPortalView()
     return wp.drawing or (wp.renderdepth or 0) > 1
 end

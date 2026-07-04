@@ -24,6 +24,7 @@ local FACE_OFFSET   = 5
 wp.ghosts = wp.ghosts or {}   -- [entity] = record
 
 -- Lets a consumer that also drives ent's RenderOverride yield to us while we ghost it.
+---@api
 function wp.IsGhosting(ent)
     return wp.ghosts[ent] ~= nil
 end
