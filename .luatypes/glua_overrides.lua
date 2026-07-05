@@ -5,6 +5,7 @@
 -- as `integer` so passing the constants to APIs that take the enum type-checks.
 
 ---@alias COLLISION_GROUP integer
+---@alias FCVAR integer
 ---@alias FORCE integer
 ---@alias MATERIAL_FOG integer
 ---@alias STENCILOPERATION integer
@@ -14,6 +15,8 @@
 ---@alias TEXTUREFLAGS integer
 ---@alias CREATERENDERTARGETFLAGS integer
 
+---@type FCVAR
+FCVAR_ARCHIVE = 128
 ---@type COLLISION_GROUP
 COLLISION_GROUP_WORLD = 20
 ---@type COLLISION_GROUP

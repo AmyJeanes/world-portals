@@ -9,6 +9,8 @@ AccessorFunc( ENT, "partnername", "PartnerName" )
 util.AddNetworkString("WorldPortals_VRMod_SetAngle")
 util.AddNetworkString("WorldPortals_Teleport")
 
+local cvTpFraction = CreateConVar("worldportals_teleport_fraction", "0.9", FCVAR_ARCHIVE, "Fraction (0-1) of a prop's depth that must pass through a portal before it teleports: 0 = leading edge, 0.5 = centre, 1 = fully through", 0, 1)
+
 function ENT:KeyValue( key, value )
     if ( key == "partnername" ) then
         self:SetPartnerName( value )
@@ -100,9 +102,18 @@ function ENT:Touch( ent )
     end
 
     -- Teleport only when the prop is crossing toward the exit, else it ping-pongs.
-    if ent:GetVelocity():GetNormalized():Dot( self:GetForward() ) >= 0 then return end
-    local projected_distance = wp.DistanceToPlane( ent:EyePos(), self:GetPos(), self:GetForward() )
-    if projected_distance < 0 then
+    local normal = self:GetForward()
+    if ent:GetVelocity():GetNormalized():Dot( normal ) >= 0 then return end
+
+    -- Teleport once the configured fraction of the prop's depth (measured along the
+    -- portal normal) has passed the plane. 0.5 = its centre; higher waits until more
+    -- of it has emerged.
+    local mins, maxs = ent:OBBMins(), ent:OBBMaxs()
+    local half_depth = 0.5 * ( math.abs((maxs.x - mins.x) * ent:GetForward():Dot(normal))
+                             + math.abs((maxs.y - mins.y) * ent:GetRight():Dot(normal))
+                             + math.abs((maxs.z - mins.z) * ent:GetUp():Dot(normal)) )
+    local center_dist = wp.DistanceToPlane( ent:LocalToWorld( ent:OBBCenter() ), self:GetPos(), normal )
+    if center_dist <= half_depth * (1 - 2 * cvTpFraction:GetFloat()) then
 
             local new_pos = wp.TransformPortalPos( ent:GetPos(), self, exit )
             local new_velocity = wp.TransformPortalVector( ent:GetVelocity(), self, exit )
