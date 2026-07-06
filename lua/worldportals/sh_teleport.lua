@@ -9,10 +9,8 @@ local ANGLE_VR_YAW_REF = Angle(0, 0, 0)
 -- Slack in front of the plane that still fires this tick - catches a slow
 -- creeper whose next, accelerated tick would step over the plane.
 local CROSS_SKIN = 2
--- Noclip discards the mirrored exit velocity (FullNoClipMove rederives it from
--- input), so a same-facing pair re-crosses and ping-pongs. Briefly
--- suppress re-fire so the view rotation can steer them clear.
-local NOCLIP_TP_COOLDOWN = 0.25
+-- Re-fire suppression window after a teleport (the bounce guard).
+local TP_REFIRE_COOLDOWN = 0.25
 local function predictPlayerTeleport(ply, mv, cmd)
     if CLIENT and ply ~= LocalPlayer() then return end
     if not ply:Alive() then return end
@@ -20,12 +18,11 @@ local function predictPlayerTeleport(ply, mv, cmd)
     local velocity = mv:GetVelocity()
     if velocity:LengthSqr() < 1 then return end
 
-    -- since > 0 is resim-safe: CurTime() in SetupMove is the predicted-tick time,
-    -- so it's 0 on the teleport tick's own resims, positive on later ticks.
-    if ply:GetMoveType() == MOVETYPE_NOCLIP and ply.wpNoclipTpAt then
-        local since = CurTime() - ply.wpNoclipTpAt
-        if since > 0 and since < NOCLIP_TP_COOLDOWN then return end
-    end
+    -- sinceTp > 0 excludes the teleport tick's own resims (CurTime is the tick time).
+    local sinceTp = ply.wpTpAt and (CurTime() - ply.wpTpAt) or nil
+    local recentTp = sinceTp ~= nil and sinceTp > 0 and sinceTp < TP_REFIRE_COOLDOWN
+    -- Noclip loses the mirrored exit velocity, so a same-facing pair ping-pongs.
+    if recentTp and ply:GetMoveType() == MOVETYPE_NOCLIP then return end
 
     local origin = mv:GetOrigin()
     local frameTime = FrameTime()
@@ -63,14 +60,13 @@ local function predictPlayerTeleport(ply, mv, cmd)
         -- Plane = portal:GetPos(), the same plane cl_render.lua culls on, so the
         -- teleport must fire before the cull hides the volume.
         local distNow  = (eyePos.x - pos.x) * fwd.x + (eyePos.y - pos.y) * fwd.y + (eyePos.z - pos.z) * fwd.z
-        -- Re-teleport guard: the eye must be in front of the plane to fire, so
-        -- the exit (the pair are each other's exits) doesn't immediately re-fire
-        -- and bounce the player. Thick portals allow firing back to the cull
-        -- plane so you can re-cross their walkable volume - except in noclip,
-        -- where the un-mirrored velocity would just re-fire the bounce.
+        -- Thick portals allow firing back to the cull plane (their walkable volume),
+        -- except in noclip where the un-mirrored velocity would just re-fire the bounce.
         local thickness = portal:GetThickness()
         local backLimit = (thickness > 0 and ply:GetMoveType() ~= MOVETYPE_NOCLIP) and -thickness or 0
-        if distNow <= backLimit then goto cont end
+        -- Behind the plane: reject only within the re-fire window; past it, a slow
+        -- crosser stranded behind is really re-crossing, so pick them up not strand them.
+        if distNow <= backLimit and recentTp then goto cont end
         local distNext = (nextEyeX - pos.x) * fwd.x + (nextEyeY - pos.y) * fwd.y + (nextEyeZ - pos.z) * fwd.z
         local centerNow  = (hullCenterX - pos.x) * fwd.x + (hullCenterY - pos.y) * fwd.y + (hullCenterZ - pos.z) * fwd.z
         local centerNext = (nextCenterX - pos.x) * fwd.x + (nextCenterY - pos.y) * fwd.y + (nextCenterZ - pos.z) * fwd.z
@@ -185,10 +181,8 @@ local function predictPlayerTeleport(ply, mv, cmd)
                 end
             end
         end
-        -- Arm the noclip re-teleport cooldown (idempotent across resim).
-        if ply:GetMoveType() == MOVETYPE_NOCLIP then
-            ply.wpNoclipTpAt = CurTime()
-        end
+        -- Arm the re-fire window (idempotent across resim).
+        ply.wpTpAt = CurTime()
         -- One teleport per tick: this returns from the whole scan. `goto cont`
         -- above is the loop's "continue" (Lua has no continue keyword); `do return
         -- end` wraps the return so the `::cont::` label can follow it (a bare
