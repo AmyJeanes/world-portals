@@ -64,9 +64,10 @@ local function predictPlayerTeleport(ply, mv, cmd)
         -- except in noclip where the un-mirrored velocity would just re-fire the bounce.
         local thickness = portal:GetThickness()
         local backLimit = (thickness > 0 and ply:GetMoveType() ~= MOVETYPE_NOCLIP) and -thickness or 0
-        -- Behind the plane: reject only within the re-fire window; past it, a slow
-        -- crosser stranded behind is really re-crossing, so pick them up not strand them.
-        if distNow <= backLimit and recentTp then goto cont end
+        -- Behind the plane: block within the re-fire window (bounce); past it pick up a
+        -- slow-crosser, but only within the visible face so far-behind steps don't yank you in.
+        local limit = recentTp and backLimit or math.min(backLimit, wp.PortalFaceOffset(portal))
+        if distNow <= limit then goto cont end
         local distNext = (nextEyeX - pos.x) * fwd.x + (nextEyeY - pos.y) * fwd.y + (nextEyeZ - pos.z) * fwd.z
         local centerNow  = (hullCenterX - pos.x) * fwd.x + (hullCenterY - pos.y) * fwd.y + (hullCenterZ - pos.z) * fwd.z
         local centerNext = (nextCenterX - pos.x) * fwd.x + (nextCenterY - pos.y) * fwd.y + (nextCenterZ - pos.z) * fwd.z
