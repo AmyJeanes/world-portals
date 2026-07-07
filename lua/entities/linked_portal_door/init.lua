@@ -112,8 +112,13 @@ function ENT:Touch( ent )
     local half_depth = 0.5 * ( math.abs((maxs.x - mins.x) * ent:GetForward():Dot(normal))
                              + math.abs((maxs.y - mins.y) * ent:GetRight():Dot(normal))
                              + math.abs((maxs.z - mins.z) * ent:GetUp():Dot(normal)) )
-    local center_dist = wp.DistanceToPlane( ent:LocalToWorld( ent:OBBCenter() ), self:GetPos(), normal )
-    if center_dist <= half_depth * (1 - 2 * cvTpFraction:GetFloat()) then
+    local center = ent:LocalToWorld( ent:OBBCenter() )
+    local center_dist = wp.DistanceToPlane( center, self:GetPos(), normal )
+    -- Gate on the opening: the engine trigger over-fires for a thick, rotated portal.
+    local lc = self:WorldToLocal( center )
+    local cmins, cmaxs = self:GetCollisionBounds()
+    local in_face = lc.y >= cmins.y and lc.y <= cmaxs.y and lc.z >= cmins.z and lc.z <= cmaxs.z
+    if in_face and center_dist <= half_depth * (1 - 2 * cvTpFraction:GetFloat()) then
 
             local new_pos = wp.TransformPortalPos( ent:GetPos(), self, exit )
             local new_velocity = wp.TransformPortalVector( ent:GetVelocity(), self, exit )
