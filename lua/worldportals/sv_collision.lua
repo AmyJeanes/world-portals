@@ -14,6 +14,8 @@ if not SERVER then return end
 wp.nocollide = wp.nocollide or {}   -- [ent] = { [portal] = { constraints = {}, lastPos = Vector } }
 
 -- Is ent something we should pass through the parent for this portal?
+---@param ent Entity
+---@param portal linked_portal_door
 local function eligible(ent, portal)
     if not IsValid(ent) then return false end
     if ent:IsPlayer() then return false end
@@ -35,6 +37,8 @@ end
 
 -- The solids a transiting prop may phase, from the wp-nocollide hook - a consumer's
 -- structure isn't always engine-parented to the portal, so we can't discover it.
+---@param portal linked_portal_door
+---@param ent Entity
 local function gatherPhaseSolids(portal, ent)
     local extra = hook.Call("wp-nocollide", GAMEMODE, portal, ent)
     if not istable(extra) then return {} end
@@ -55,6 +59,8 @@ end
 -- no-collide between them the physics solver shoves the parent away. Maintain that
 -- frame<->parent no-collide. Idempotent, so safe to re-run - BuildFrame recreates the
 -- physobj and orphans the old one, and the parent can appear late.
+---@param frame Entity
+---@param portal linked_portal_door
 function wp.NoCollideFrame(frame, portal)
     if not (IsValid(frame) and IsValid(portal)) then return end
     -- ONLY the portal's parent: Source propagates the NoCollide down its whole
@@ -76,6 +82,8 @@ end
 -- Arm the pass-through for `ent`: no-collide it with the solids wp-nocollide names so
 -- it phases through instead of jamming on the structure. Idempotent - a no-op if the
 -- pair is already armed, so it's safe to call every Touch tick.
+---@param portal linked_portal_door
+---@param ent Entity
 function wp.ArmNoCollide(portal, ent)
     if not (IsValid(portal) and IsValid(ent)) then return end
 
@@ -100,12 +108,15 @@ function wp.ArmNoCollide(portal, ent)
 end
 
 -- Restore collision by removing each pair.
+---@param rec {constraints: Entity[], lastPos: Vector?}
 local function releaseConstraints(rec)
     for _, c in ipairs(rec.constraints) do
         if IsValid(c) then c:Remove() end
     end
 end
 
+---@param ent Entity
+---@param portal linked_portal_door
 function wp.DisarmNoCollide(ent, portal)
     local recs = wp.nocollide[ent]
     if not recs then return end
@@ -119,6 +130,7 @@ function wp.DisarmNoCollide(ent, portal)
     end
 end
 
+---@param ent Entity
 function wp.DisarmAllNoCollide(ent)
     local recs = wp.nocollide[ent]
     if not recs then return end
@@ -130,6 +142,7 @@ end
 
 -- Disarm everything armed against a portal (it closed, disabled teleport, or was
 -- removed) so the parent goes solid again for those props.
+---@param portal Entity
 function wp.DisarmPortal(portal)
     local victims
     for ent, recs in pairs(wp.nocollide) do

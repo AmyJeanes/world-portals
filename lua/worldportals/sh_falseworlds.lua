@@ -12,6 +12,7 @@ local ANGLE_ZERO = Angle()
 local ANGLE_YAW_180 = Angle( 0, 180, 0 )
 
 ---@api
+---@param T worldportals_false_world
 function wp.addfalseworld( T )
     if not T.id then
         error( "wp.addfalseworld: missing T.id" )
@@ -31,6 +32,7 @@ end
 
 if SERVER then return end
 
+---@param id string
 local function ensureCache( id )
     local cache = wp.falseworldscache[id]
     if cache then return cache end
@@ -54,9 +56,11 @@ end
 ---@field baselight Vector?
 ---@field skybox worldportals_false_world_part?
 ---@field models table<string, worldportals_false_world_part>
----@field lights LocalLight[]?
+---@field lights table[]?
 
 -- Apply state that's static for the lifetime of the cached entity.
+---@param rawpart worldportals_false_world_part
+---@param ent CSEnt
 local function setupPart( rawpart, ent )
     ent:SetNoDraw( true )
     ent:SetAngles( rawpart.ang or ANGLE_ZERO )
@@ -67,6 +71,9 @@ local function setupPart( rawpart, ent )
     end
 end
 
+---@param angle Angle
+---@param portal linked_portal_door
+---@param falseWorldAng Angle
 local function TransformFalseWorldAngle( angle, portal, falseWorldAng )
     local l_angle = portal:WorldToLocalAngles( angle )
     l_angle:RotateAroundAxis( VECTOR_UP, 180 )
@@ -75,6 +82,10 @@ local function TransformFalseWorldAngle( angle, portal, falseWorldAng )
     return w_angle
 end
 
+---@param pos Vector
+---@param portal linked_portal_door
+---@param falseWorldPos Vector
+---@param falseWorldAng Angle
 local function TransformFalseWorldPos( pos, portal, falseWorldPos, falseWorldAng )
     local l_pos = portal:WorldToLocal( pos )
     l_pos:Rotate( ANGLE_YAW_180 )
@@ -83,6 +94,9 @@ local function TransformFalseWorldPos( pos, portal, falseWorldPos, falseWorldAng
     return w_pos
 end
 
+---@param portal linked_portal_door
+---@param falseWorldPos Vector
+---@param falseWorldAng Angle
 local function GetFalseWorldExitPose( portal, falseWorldPos, falseWorldAng )
     local exitPos = falseWorldPos
     local exitAng = falseWorldAng
@@ -102,6 +116,12 @@ local function GetFalseWorldExitPose( portal, falseWorldPos, falseWorldAng )
     return exitPos, exitAng
 end
 
+---@param portal linked_portal_door
+---@param plyOrigin Vector
+---@param plyAngle Angle
+---@param width number
+---@param height number
+---@param fov number
 function wp.createfalseworld( portal, plyOrigin, plyAngle, width, height, fov )
     local fwname = portal:GetFalseWorld()
     local falseworld = wp.falseworlds[fwname]
@@ -179,6 +199,14 @@ function wp.createfalseworld( portal, plyOrigin, plyAngle, width, height, fov )
     cam.End3D()
 end
 
+---@param texture ITexture
+---@param portal linked_portal_door
+---@param plyOrigin Vector
+---@param plyAngle Angle
+---@param width number
+---@param height number
+---@param fov number
+---@param depth number
 function wp.renderfalseworld( texture, portal, plyOrigin, plyAngle, width, height, fov, depth )
     hook.Call( "wp-prerender", GAMEMODE, portal, nil, plyOrigin, depth )
     render.PushRenderTarget( texture )

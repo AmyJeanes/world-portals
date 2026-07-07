@@ -50,6 +50,7 @@ CreateClientConVar("worldportals_recurse_depth", "2", true, false, "World Portal
 local enabled = true
 local recurseDepth = 1
 
+---@param value any a raw cvar string or a numeric depth
 local function ClampRecurseDepth(value)
     return math.Clamp(math.floor(tonumber(value) or 1), 1, 9)
 end
@@ -91,6 +92,7 @@ function wp.IsRenderingPortalView()
 end
 
 -- Snap to a 4-unit grid so small camera drift reuses the same chain key / RT.
+---@param v Vector
 local function quantizePos(v)
     return math.floor(v.x / 4 + 0.5), math.floor(v.y / 4 + 0.5), math.floor(v.z / 4 + 0.5)
 end
@@ -99,6 +101,8 @@ end
 -- camera is omitted (only one chain - the player view - so the RT stays
 -- stable across frames). At d>1 the camera is folded in so sibling chains
 -- with different cameras get distinct RTs and identical ones dedup.
+---@param depth number
+---@param camPos Vector?
 ---@param portal linked_portal_door
 local function getChainKey(depth, camPos, portal)
     if depth <= 1 or not camPos then
@@ -131,6 +135,8 @@ end
 -- in, so a second d=1 view in the same frame (a security monitor, an RT camera)
 -- gets its own decision instead of reusing the eye view's. Separate per-portal
 -- key fields so the two caches can't clobber each other.
+---@param depth number
+---@param camPos Vector?
 ---@param portal linked_portal_door
 local function getDecisionKey(depth, camPos, portal)
     if not camPos then return getChainKey(depth, nil, portal) end
@@ -173,6 +179,7 @@ end)
 -- Per-frame scalar cache for portal pose. Engine getters
 -- (GetPos/GetForward/...) each allocate a Vector; caching as plain numbers
 -- on the entity table eliminates that for every call after the first.
+---@param p linked_portal_door
 local function cachePortalScalars(p)
     if p.WPCacheFrame == frameCounter then return end
     local pos = p:GetPos()
@@ -210,6 +217,7 @@ local VECTOR_UP = Vector(0, 0, 1)
 -- parent's camOrigin/camAngle/exitPos/exitFwd while they're still in use
 -- across the recursion + post-recursion RenderView call.
 local depthSlots = {}
+---@param depth number
 local function getDepthSlots(depth)
     local s = depthSlots[depth]
     if not s then
@@ -228,9 +236,18 @@ end
 -- portals late in wp.portals starve. Sort the top level by on-screen prominence so the
 -- portal you're looking at claims pool slots first; depth-first then renders its subtree.
 local sortBuffer = {} ---@type linked_portal_door[]
+---@param a linked_portal_door
+---@param b linked_portal_door
 local function sortByPriorityDesc(a, b)
     return a.WPSortKey > b.WPSortKey
 end
+---@param portals linked_portal_door[]
+---@param camX number
+---@param camY number
+---@param camZ number
+---@param fwdX number
+---@param fwdY number
+---@param fwdZ number
 ---@return linked_portal_door[] sorted, integer count
 local function getSortedPortals(portals, camX, camY, camZ, fwdX, fwdY, fwdZ)
     local buf = sortBuffer -- shared buffer is safe: top-level renders never nest
@@ -263,6 +280,8 @@ end
 --   local.x = rel·forward, local.y = -(rel·right), local.z = rel·up.
 -- The yaw-180 mirror negates local.x/y; LocalToWorld is the symmetric
 -- inverse. Allocation-free in the common (no exit-angle-offset) path.
+---@param out Vector
+---@param vec Vector
 ---@param portal linked_portal_door
 ---@param exit_portal linked_portal_door
 local function transformPortalPosInto(out, vec, portal, exit_portal)
@@ -308,6 +327,8 @@ local function transformPortalPosInto(out, vec, portal, exit_portal)
 end
 wp.TransformPortalPosInto = transformPortalPosInto
 
+---@param out Angle
+---@param angle Angle
 ---@param portal linked_portal_door
 ---@param exit_portal linked_portal_door
 local function transformPortalAngleInto(out, angle, portal, exit_portal)
@@ -325,6 +346,9 @@ local function transformPortalAngleInto(out, angle, portal, exit_portal)
 end
 wp.TransformPortalAngleInto = transformPortalAngleInto
 
+---@param chainKey string
+---@param width number
+---@param height number
 local function getPooledRT(chainKey, width, height)
     local tag = math.floor(width) .. "x" .. math.floor(height)
     local bucket = resPools[tag]
@@ -365,6 +389,11 @@ local function getPooledRT(chainKey, width, height)
     return victim.rt
 end
 
+---@param portal linked_portal_door
+---@param width number?
+---@param height number?
+---@param depth number?
+---@param chainKey string?
 ---@return ITexture?
 function wp.GetPortalTexture(portal, width, height, depth, chainKey)
     depth = ClampRecurseDepth(depth)
@@ -389,6 +418,7 @@ function wp.GetPortalTexture(portal, width, height, depth, chainKey)
     return getPooledRT(chainKey, width, height)
 end
 
+---@param portal linked_portal_door
 ---@return ITexture
 ---@return number depth
 function wp.GetPortalDrawTexture(portal)
@@ -407,12 +437,14 @@ end
 
 -- Chain keys whose RT was filled this frame. renderportals uses it to dedup
 -- converging chains; entity Draw uses it to skip portals whose RT is stale.
+---@type table<string, boolean>
 local frameRenderedChains = {}
 local frameShouldRenderCache = {}
 
 -- Pooled scratch tables for the per-view frameRenderedChains swap below - pooled, not one
 -- shared table, so a render nested inside another's scene draw stays isolated.
 local chainTablePool = {}
+---@return table<string, boolean>
 local function acquireChainTable()
     local n = #chainTablePool
     if n > 0 then
@@ -422,11 +454,15 @@ local function acquireChainTable()
     end
     return {}
 end
+---@param t table<string, boolean>
 local function releaseChainTable(t)
     for k in pairs(t) do t[k] = nil end
     chainTablePool[#chainTablePool + 1] = t
 end
 
+---@param portal linked_portal_door
+---@param depth number?
+---@param camPos Vector?
 function wp.IsPortalChainRendered(portal, depth, camPos)
     depth = depth or wp.drawtexturedepth or 1
     camPos = camPos or wp.vieworigin or EyePos()
@@ -446,6 +482,10 @@ end )
 -- Per-frame cache keyed by chainKey. Result is encoded as a number so the
 -- cache doesn't allocate a table per entry:
 --   0 = !render+!black, 1 = render, 2 = !render+black, 3 = render+black.
+---@param portal linked_portal_door
+---@param camOrigin Vector?
+---@param camAngle Angle?
+---@param camFOV number?
 function wp.shouldrender( portal, camOrigin, camAngle, camFOV )
     if not camOrigin then camOrigin = EyePos() end
     if not camAngle then camAngle = EyeAngles() end
@@ -538,6 +578,7 @@ if not render.RealRenderView then
 end
 
 local EMPTY={}
+---@param view table? a ViewData-like table (also accepts the deprecated aspectratio/w/h aliases)
 function WorldPortals_RenderView(view)
     local v=view or EMPTY
     local origin = v.origin or EyePos()
@@ -627,15 +668,30 @@ end)
 local framePortalRenderCount = 0
 local framePortalRenderByDepth = {}
 
+---One recorded render/cull decision for the debug overlay (cl_debug.lua).
+---@class wp_render_record
+---@field portal linked_portal_door?
+---@field depth number?
+---@field fov number?
+---@field camOrigin Vector
+---@field camAngle Angle
+
+---A wp_render_record that also tracks the cumulative ancestor-clipped polygon.
+---@class wp_rendered_record : wp_render_record
+---@field cumPoly number[]
+
 -- Debug-overlay log of every render this frame, in order. Slots reused
 -- across frames; gated on `recordRenders` so overlay-off pays nothing.
+---@type wp_rendered_record[]
 local frameRenderedList = {}
 local frameRenderedCount = 0
 -- Same shape, for portals culled by ancestor-overlap (yellow in overlay).
+---@type wp_render_record[]
 local frameCulledList = {}
 local frameCulledCount = 0
 local recordRenders = false
 
+---@param on boolean
 function wp.SetRecordRenders(on)
     recordRenders = on and true or false
 end
@@ -649,12 +705,14 @@ function wp.GetFramePortalRenderByDepth()
 end
 
 -- Returns (list, count). Read-only; entries beyond count are stale.
+---@return wp_rendered_record[] list, integer count
 function wp.GetFrameRenderedList()
     return frameRenderedList, frameRenderedCount
 end
 
 -- Same shape, for ancestor-overlap-culled portals. Only populated when
 -- recordRenders is on.
+---@return wp_render_record[] list, integer count
 function wp.GetFrameCulledList()
     return frameCulledList, frameCulledCount
 end
@@ -678,6 +736,8 @@ end)
 -- exit-view draw (cl_init.lua) would read that as opacity and show the nearest surfaces as
 -- fake translucency. Flatten alpha to 255 (RGB untouched) so the draw's opacity is clean -
 -- solid where opaque, the portal's transparency where not.
+---@param width number
+---@param height number
 local function flattenRTAlpha(width, height)
     render.OverrideColorWriteEnable(true, false)
     render.OverrideAlphaWriteEnable(true, true)
@@ -689,6 +749,17 @@ local function flattenRTAlpha(width, height)
     render.OverrideColorWriteEnable(false, false)
 end
 
+---@param plyOrigin Vector
+---@param plyAngle Angle
+---@param width number
+---@param height number
+---@param fov number
+---@param depth number?
+---@param parentPoly number[]?
+---@param parentExitPos Vector?
+---@param parentExitFwd Vector?
+---@param parentPortal linked_portal_door?
+---@param aspect number?
 function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, parentPoly, parentExitPos, parentExitFwd, parentPortal, aspect )
     if ( wp.drawing ) then return end
     if not enabled then return end

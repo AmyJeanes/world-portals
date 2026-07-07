@@ -11,6 +11,9 @@ local ANGLE_VR_YAW_REF = Angle(0, 0, 0)
 local CROSS_SKIN = 2
 -- Re-fire suppression window after a teleport (the bounce guard).
 local TP_REFIRE_COOLDOWN = 0.25
+---@param ply Player
+---@param mv CMoveData
+---@param cmd CUserCmd
 local function predictPlayerTeleport(ply, mv, cmd)
     if CLIENT and ply ~= LocalPlayer() then return end
     if not ply:Alive() then return end
@@ -234,6 +237,7 @@ if not util.RealTraceLine then
     util.RealTraceLine = util.TraceLine
 end
 
+---@param data Trace
 function WorldPortals_TraceLine(data)
     local trace = util.RealTraceLine(data)
     ---@cast trace WPTraceResult
@@ -250,7 +254,9 @@ function WorldPortals_TraceLine(data)
             local dir = wp.TransformPortalAngle( trace.Normal:Angle(), portal.Entity, portal.Entity:GetExit() ):Forward()
             local startPos = wp.TransformPortalPos( portal.HitPos, portal.Entity, portal.Entity:GetExit() )
 
-            local length = data.start:Distance(data.endpos)
+            local dataStart, dataEnd = data.start, data.endpos
+            if not dataStart or not dataEnd then return trace end
+            local length = dataStart:Distance(dataEnd)
             local usedLength = portal.Distance
 
             local endPos = dir

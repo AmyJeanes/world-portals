@@ -20,6 +20,8 @@ local TEXTUREFLAGS_CLAMPT = 8
 local TEXTUREFLAGS_NOMIP = 256
 
 local skyRTs = {}
+---@param w number
+---@param h number
 local function getSkyRT( w, h )
     local tag = math.floor( w ) .. "x" .. math.floor( h )
     local rt = skyRTs[tag]
@@ -45,6 +47,14 @@ local skyView = {
     znear = 2, zfar = 56756, viewid = 1,
 }
 
+---@param camOrigin Vector
+---@param camAngle Angle
+---@param w number
+---@param h number
+---@param fov number
+---@param aspect number?
+---@param exitPos Vector?
+---@param exitForward Vector?
 function wp.RenderVoidSky3D( camOrigin, camAngle, w, h, fov, aspect, exitPos, exitForward )
     local sky = wp.sky3d
     if not sky then return nil end
@@ -76,7 +86,7 @@ function wp.RenderVoidSky3D( camOrigin, camAngle, w, h, fov, aspect, exitPos, ex
     -- scaled-down opening. The debug overlay has no portal, so it passes neither and skips this.
     local clip = exitPos and exitForward
     local oldClip
-    if clip then
+    if exitPos and exitForward then
         local d = exitForward:Dot( exitPos ) * invScale + exitForward:Dot( sky.origin )
         oldClip = render.EnableClipping( true )
         render.PushCustomClipPlane( exitForward, d )
@@ -189,6 +199,7 @@ end
 -- corners reach further out than their faces, so keep the cube inside the far clip plane (half the far
 -- distance leaves margin) or the engine slices the corners off; then pin its depth to the far plane so
 -- any real geometry, near or far, still draws in front.
+---@param origin Vector
 local function drawSkyCube( origin )
     buildSkyFaces()
     local vs = render.GetViewSetup()
@@ -215,6 +226,7 @@ local skyBackdropMat = CreateMaterial( "wp_voidsky3d_backdrop", "UnlitGeneric", 
 -- depth and would paint over the world, so we put it on a quad way out at the far plane (depth-test
 -- on, write off) so real geometry still draws in front. The quad's sized to fill the view and mapped
 -- to the screen, matching the fov/aspect the target was rendered with.
+---@param rt ITexture
 local function drawSkyBackdrop( rt )
     skyBackdropMat:SetTexture( "$basetexture", rt )
     local origin = wp.vieworigin or EyePos()
@@ -285,6 +297,9 @@ hook.Add( "PostDrawTranslucentRenderables", "WorldPortals_VoidSkyDebug", functio
     local origin = wp.vieworigin or EyePos()
     local dist = drawSkyCube( origin )
     if mode >= 2 then -- outline the 12 cube edges so the face seams are visible
+        ---@param x number
+        ---@param y number
+        ---@param z number
         local function C( x, y, z ) return origin + Vector( x * dist, y * dist, z * dist ) end
         local edges = {
             { C(-1,-1,-1), C(1,-1,-1) }, { C(-1,-1,1), C(1,-1,1) }, { C(-1,1,-1), C(1,1,-1) }, { C(-1,1,1), C(1,1,1) },

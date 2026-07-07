@@ -24,6 +24,13 @@ local recentTeleports = {}
 local MAX_HISTORY = 5
 local lastNetTeleport = nil
 
+---@param portal linked_portal_door
+---@param oldPos Vector
+---@param newPos Vector
+---@param oldAng Angle
+---@param newAng Angle
+---@param oldVel Vector
+---@param newVel Vector
 function wp.RecordTeleportEvent(portal, oldPos, newPos, oldAng, newAng, oldVel, newVel)
     table.insert(recentTeleports, 1, {
         time = CurTime(),
@@ -41,6 +48,7 @@ function wp.RecordTeleportEvent(portal, oldPos, newPos, oldAng, newAng, oldVel, 
     end
 end
 
+---@param pos Vector
 function wp.RecordNetTeleport(pos)
     lastNetTeleport = { time = CurTime(), pos = Vector(pos.x, pos.y, pos.z) }
 end
@@ -52,6 +60,8 @@ hook.Add("HUDPaint", "WorldPortals_DebugPredictHUD", function()
 
     local x, y = 20, 100
     local lh = 16
+    ---@param text string
+    ---@param col Color?
     local function line(text, col)
         draw.SimpleText(text, "DermaDefault", x, y, col or color_white, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
         y = y + lh

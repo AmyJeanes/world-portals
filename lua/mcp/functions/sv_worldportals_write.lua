@@ -14,6 +14,7 @@ local MAX_SPECS = 100
 
 -- Measure a custom model's render-bounds centre (for custom_model_center). Un-Spawned prop, so no
 -- networking; precache first (server GetModelRenderBounds is nil for an unprecached model).
+---@param model string
 local function measureRenderCenter(model)
     util.PrecacheModel(model)
     local e = ents.Create("prop_dynamic")
@@ -26,6 +27,9 @@ local function measureRenderCenter(model)
 end
 
 -- Apply transform + size NetworkVars. `pos_delta` moves relative to the current pos (for bulk moves).
+---@param p linked_portal_door
+---@param args table schema args, validated per-field below
+---@param applied string[]
 local function applyTransformSize(p, args, applied)
     if args.pos ~= nil then
         local c, e = wp_.ParseTriple(args.pos, "pos")
@@ -58,6 +62,9 @@ local function applyTransformSize(p, args, applied)
 end
 
 -- Apply flag + render NetworkVars (not the exit link -- that's wp_portal_link's job).
+---@param p linked_portal_door
+---@param args table schema args, validated per-field below
+---@param applied string[]
 local function applyRenderFlags(p, args, applied)
     if args.open ~= nil then p:SetOpen(args.open == true); applied[#applied + 1] = "open" end
     if args.enable_teleport ~= nil then p:SetEnableTeleport(args.enable_teleport == true); applied[#applied + 1] = "enable_teleport" end
@@ -126,6 +133,13 @@ end
 -- ENT:Initialize when width/height > 0, and post-Spawn SetParent on a trigger portal silently
 -- kills its Touch detection. Flags (open/enable_teleport) are applied by the caller AFTER Spawn
 -- (Initialize force-sets them true for non-map portals).
+---@param pos Vector
+---@param ang Angle?
+---@param width number
+---@param height number
+---@param thickness number?
+---@param parent Entity?
+---@param owner Player?
 local function spawnPortal(pos, ang, width, height, thickness, parent, owner)
     local p = ents.Create(PORTAL_CLASS)
     if not IsValid(p) then return nil end
@@ -144,6 +158,7 @@ end
 
 -- thickness 0 -> a zero-depth (-5..-5) trigger box: players still cross (plane-based SetupMove) but
 -- props may not (Touch needs box overlap). Warn (don't block); only on an explicit 0.
+---@param t number?
 local function thicknessWarning(t)
     if t ~= nil and math.floor(t) == 0 then
         return "thickness 0 makes a zero-depth trigger box: players still teleport (plane-based) but PROPS may not register a crossing (Touch-based) -- pass a small positive thickness for prop teleport"
@@ -151,6 +166,7 @@ local function thicknessWarning(t)
     return nil
 end
 
+---@param v any schema arg, validated below
 local function resolveParent(v)
     if v == nil then return nil, nil end
     if not isnumber(v) then return nil, "`parent` must be an entindex" end
@@ -199,6 +215,8 @@ local SPEC_ITEM = mergeProps({
 }, SIZE_PROPS, RENDER_PROPS)
 
 -- Merge a spec item over the shared top-level args (item wins).
+---@param spec any spec item, table when present
+---@param shared table schema args
 local function mergeSpec(spec, shared)
     local m = {}
     for k, v in pairs(shared) do m[k] = v end
@@ -207,6 +225,7 @@ local function mergeSpec(spec, shared)
     return m
 end
 
+---@param args table schema args
 local function createBatch(args)
     local specs = args.specs
     if #specs == 0 then return { ok = false, error = "`specs` must be a non-empty array" } end

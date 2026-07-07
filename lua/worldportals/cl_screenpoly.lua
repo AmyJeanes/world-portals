@@ -6,6 +6,26 @@
 
 local NEAR_EPS = 1
 
+---@param out number[]
+---@param x number
+---@param y number
+---@param z number
+---@param cpx number
+---@param cpy number
+---@param cpz number
+---@param fwdX number
+---@param fwdY number
+---@param fwdZ number
+---@param rightX number
+---@param rightY number
+---@param rightZ number
+---@param upX number
+---@param upY number
+---@param upZ number
+---@param tanHalfH number
+---@param tanHalfV number
+---@param sw number
+---@param sh number
 local function addProjectedPoint(out, x, y, z, cpx, cpy, cpz, fwdX, fwdY, fwdZ, rightX, rightY, rightZ, upX, upY, upZ, tanHalfH, tanHalfV, sw, sh)
     local relX = x - cpx
     local relY = y - cpy
@@ -17,6 +37,29 @@ local function addProjectedPoint(out, x, y, z, cpx, cpy, cpz, fwdX, fwdY, fwdZ, 
     out[#out + 1] = (1 - ndcY) * 0.5 * sh
 end
 
+---@param out number[]
+---@param ax number
+---@param ay number
+---@param az number
+---@param bx number
+---@param by number
+---@param bz number
+---@param cpx number
+---@param cpy number
+---@param cpz number
+---@param fwdX number
+---@param fwdY number
+---@param fwdZ number
+---@param rightX number
+---@param rightY number
+---@param rightZ number
+---@param upX number
+---@param upY number
+---@param upZ number
+---@param tanHalfH number
+---@param tanHalfV number
+---@param sw number
+---@param sh number
 local function clipAndProjectEdge(out, ax, ay, az, bx, by, bz, cpx, cpy, cpz, fwdX, fwdY, fwdZ, rightX, rightY, rightZ, upX, upY, upZ, tanHalfH, tanHalfV, sw, sh)
     local aRelX = ax - cpx
     local aRelY = ay - cpy
@@ -42,6 +85,7 @@ end
 -- Pool reuses buffers across the many intermediate polys produced by
 -- clipping/intersection per frame.
 local polyPool = {}
+---@return number[]
 local function acquirePoly()
     local n = #polyPool
     if n > 0 then
@@ -52,10 +96,12 @@ local function acquirePoly()
     end
     return {}
 end
+---@param p number[]?
 local function releasePoly(p)
     if p then polyPool[#polyPool + 1] = p end
 end
 
+---@param p number[]?
 function wp.ReleasePoly(p)
     releasePoly(p)
 end
@@ -79,6 +125,13 @@ local lastCamUpX, lastCamUpY, lastCamUpZ = 0, 0, 0
 -- portal render target is pushed (a stereoscopy/VR eye RT is smaller than the screen, so
 -- ancestor polys built pre-push and child polys built post-push would be in different
 -- spaces and never intersect). Defaults to the screen for the debug overlay.
+---@param portal linked_portal_door
+---@param camPos Vector
+---@param camAng Angle
+---@param camFov number
+---@param aspect number
+---@param sw number?
+---@param sh number?
 function wp.GetPortalScreenPolygon(portal, camPos, camAng, camFov, aspect, sw, sh)
     local cap, cay, car = camAng.p, camAng.y, camAng.r
     if cap ~= lastCamP or cay ~= lastCamY or car ~= lastCamR then
@@ -132,6 +185,7 @@ function wp.GetPortalScreenPolygon(portal, camPos, camAng, camFov, aspect, sw, s
     return out
 end
 
+---@param poly number[]
 local function polygonSignedArea(poly)
     local n = #poly
     if n < 6 then return 0 end
@@ -145,6 +199,8 @@ local function polygonSignedArea(poly)
     return sum * 0.5
 end
 
+---@param src number[]
+---@param dst number[]
 local function reversePolygonInto(src, dst)
     for i = #dst, 1, -1 do dst[i] = nil end
     for i = #src - 1, 1, -2 do
@@ -157,6 +213,12 @@ end
 -- Sutherland-Hodgman: clip `subject` against edge (e1 -> e2), keeping the
 -- right-normal-inward half. Result written to `out` (cleared first) so
 -- callers can ping-pong two buffers across edges.
+---@param subject number[]
+---@param e1x number
+---@param e1y number
+---@param e2x number
+---@param e2y number
+---@param out number[]
 local function clipPolygonAgainstEdge(subject, e1x, e1y, e2x, e2y, out)
     for i = #out, 1, -1 do out[i] = nil end
     local n = #subject
@@ -191,6 +253,8 @@ end
 -- Iterated Sutherland-Hodgman convex/convex intersection. Caller owns the
 -- returned pool buffer (call wp.ReleasePoly when done). Portal-recursed cameras
 -- can produce either winding so we canonicalize the clip first.
+---@param subject number[]
+---@param clip number[]
 function wp.IntersectConvexPolygons(subject, clip)
     local result = acquirePoly()
     if #subject == 0 or #clip < 6 then return result end

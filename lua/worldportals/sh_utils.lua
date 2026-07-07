@@ -1,5 +1,7 @@
 -- Utils
 
+---@param y number
+---@param x number
 ---@return number
 local function arctan2(y, x)
     if ((x ~= 0) or (y ~= 0)) then
@@ -22,6 +24,11 @@ local function arctan2(y, x)
 end
 
 -- Checks if a given position and view angle is looking at another position
+---@param portal linked_portal_door
+---@param portal_pos Vector
+---@param view_pos Vector
+---@param view_ang Angle
+---@param view_fov number
 function wp.IsLookingAt( portal, portal_pos, view_pos, view_ang, view_fov )
     local radius = math.max(portal:BoundingRadius(), portal:GetThickness())
     local dx = portal_pos.x - view_pos.x
@@ -55,6 +62,9 @@ function wp.IsLookingAt( portal, portal_pos, view_pos, view_ang, view_fov )
 end
 
 -- Returns the distance to a plane
+---@param object_pos Vector
+---@param plane_pos Vector
+---@param plane_forward Vector
 function wp.DistanceToPlane( object_pos, plane_pos, plane_forward )
 
     plane_forward:Normalize()
@@ -77,6 +87,9 @@ local VECTOR_UP = Vector(0, 0, 1)
 
 -- Transforms a position from one portal to another
 ---@api
+---@param vec Vector
+---@param portal linked_portal_door
+---@param exit_portal linked_portal_door
 function wp.TransformPortalPos( vec, portal, exit_portal )
     local l_vec = portal:WorldToLocal( vec )
     l_vec:Rotate(ANGLE_YAW_180)
@@ -98,6 +111,9 @@ end
 -- it's a real rotation at any pitch/roll (Euler-angle subtraction would flip
 -- velocity on pitched/rolled pairs).
 ---@api
+---@param vec Vector
+---@param portal linked_portal_door
+---@param exit_portal linked_portal_door
 function wp.TransformPortalVector( vec, portal, exit_portal )
 
     -- Direction-only: zero origin so only the rotation applies. WorldToLocal
@@ -112,6 +128,9 @@ end
 
 --Transforms an angle from one portal to another
 ---@api
+---@param angle Angle
+---@param portal linked_portal_door
+---@param exit_portal linked_portal_door
 function wp.TransformPortalAngle( angle, portal, exit_portal )
 
     local l_angle = portal:WorldToLocalAngles( angle )
@@ -124,6 +143,8 @@ end
 
 --Returns the first portal hit starting from a source position and given the direction of the vector
 ---@api
+---@param source Vector
+---@param direction Vector
 function wp.GetFirstPortalHit(source, direction)
     local portal = {
         Entity = nil,

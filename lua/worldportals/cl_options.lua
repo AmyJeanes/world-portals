@@ -30,6 +30,7 @@ hook.Add("PopulateToolMenu", "WorldPortals_PopulateToolMenu", function()
         recurseWarn:SetAutoStretchVertical(true)
         panel:AddItem(recurseWarn)
 
+        ---@param value number
         local function updateRecurseWarn(value)
             local show = math.floor(tonumber(value) or 0) > 3
             if recurseWarn:IsVisible() ~= show then

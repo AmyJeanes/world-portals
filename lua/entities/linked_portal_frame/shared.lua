@@ -16,8 +16,11 @@ ENT.FrameMinDepth = 8  -- minimum corridor depth, so a thin (near-zero-thickness
 -- The 4 perimeter slabs as {x0,x1,y0,y1,z0,z1} boxes in local space (x=transit,
 -- y=width, z=height; matches the door SetupBounds opening). nil for a degenerate
 -- opening. Feeds both the physics hull (init.lua) and the debug overlay (cl_init.lua).
+---@param width number?
+---@param height number?
+---@param thickness number?
 function ENT:FrameSlabs(width, height, thickness)
-    if not (width and height) or width <= 0 or height <= 0 then return nil end
+    if not width or not height or width <= 0 or height <= 0 then return nil end
     local hw, hh = width / 2, height / 2
     local b = self.FrameBorder
     -- The opening spans x between -5 and -(5+thickness). thickness can be NEGATIVE

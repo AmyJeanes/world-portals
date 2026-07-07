@@ -18,6 +18,7 @@ wp.predictDisarmReasons = wp.predictDisarmReasons or {timeout=0}
 -- Arm the roll fade (wp.rotating) + stair-strip window (wp.stairStripAt) for a
 -- local teleport, from the listen-server predict path and the SP net handler.
 -- NOT the predict-lerp shift - that's prediction/ping-only.
+---@param newAng Angle
 function wp.ArmTeleportView(newAng)
     if newAng.r ~= 0 then
         wp.rotating = newAng.r
@@ -25,6 +26,7 @@ function wp.ArmTeleportView(newAng)
     wp.stairStripAt = SysTime()
 end
 
+---@param ply Player
 local function getPredictDelta(ply)
     if not wp.predictedPos then return end
     if SysTime() - (wp.predictedAt or 0) > PREDICT_TIMEOUT then

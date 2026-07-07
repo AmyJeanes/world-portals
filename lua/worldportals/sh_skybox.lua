@@ -9,11 +9,13 @@ if SERVER then
     util.AddNetworkString( "WorldPortals_RequestSky3D" )
 
     -- colorPrimary comes back as a "r g b a" string.
+    ---@param s any GetInternalVariable's return is untyped
     local function parseColor( s )
         local p = string.Explode( " ", tostring( s ) )
         return tonumber( p[1] ) or 255, tonumber( p[2] ) or 255, tonumber( p[3] ) or 255
     end
 
+    ---@param target Player?
     local function send( target )
         local cam = ents.FindByClass( "sky_camera" )[1]
         local valid = IsValid( cam )

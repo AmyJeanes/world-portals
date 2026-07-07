@@ -5,6 +5,8 @@
 wp = wp or {}
 
 ---@api
+---@param folder string
+---@param noprefix boolean?
 function wp.LoadFolder( folder, noprefix )
     local files = file.Find( folder .. "/*.lua", "LUA" )
     for _, name in ipairs( files ) do

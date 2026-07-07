@@ -8,6 +8,12 @@ include("shared.lua")
 local SHADOW_TELEPORT_DIST = 128
 
 -- Eight corners of an axis-aligned box in this entity's local space.
+---@param x0 number
+---@param x1 number
+---@param y0 number
+---@param y1 number
+---@param z0 number
+---@param z1 number
 local function boxVerts(x0, x1, y0, y1, z0, z1)
     return {
         Vector(x0, y0, z0), Vector(x1, y0, z0), Vector(x0, y1, z0), Vector(x1, y1, z0),
@@ -23,6 +29,9 @@ end
 
 -- (Re)build the collision hull from the portal opening dimensions. Calling again
 -- replaces the previous physics object.
+---@param width number?
+---@param height number?
+---@param thickness number?
 function ENT:BuildFrame(width, height, thickness)
     local slabs = self:FrameSlabs(width, height, thickness)
     if not slabs then

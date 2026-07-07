@@ -8,10 +8,12 @@ wp_.PORTAL_CLASS = PORTAL_CLASS
 wp_.DEFAULT_WIDTH = 100
 wp_.DEFAULT_HEIGHT = 100
 
+---@param ent Entity
 function wp_.IsPortal(ent)
     return IsValid(ent) and ent:GetClass() == PORTAL_CLASS
 end
 
+---@param entindex any schema arg, validated below
 function wp_.ResolvePortal(entindex)
     if type(entindex) ~= "number" then
         return nil, "`entindex` must be a number"
@@ -27,6 +29,7 @@ function wp_.FirstPlayer()
     return player.GetAll()[1]
 end
 
+---@param steamid any schema arg, validated below
 function wp_.ResolvePlayer(steamid)
     if steamid ~= nil and steamid ~= "" then
         if type(steamid) ~= "string" then return nil, "`steamid` must be a string" end
@@ -38,6 +41,8 @@ function wp_.ResolvePlayer(steamid)
     return wp_.FirstPlayer()
 end
 
+---@param t any schema arg, validated below
+---@param label string
 ---@return number[]? values, string? err
 function wp_.ParseTriple(t, label)
     if type(t) ~= "table" or #t ~= 3 then
@@ -51,6 +56,7 @@ function wp_.ParseTriple(t, label)
     return { t[1], t[2], t[3] }
 end
 
+---@param ent Entity
 function wp_.OwnerInfo(ent)
     local creator = ent:GetCreator()
     if not IsValid(creator) then return nil end
@@ -58,6 +64,7 @@ function wp_.OwnerInfo(ent)
 end
 
 -- The exit an entity's portal points at, with the facts that decide whether the link is usable.
+---@param exit Entity
 function wp_.ExitRef(exit)
     if wp_.IsPortal(exit) then
         return {
@@ -74,6 +81,8 @@ function wp_.ExitRef(exit)
     return nil
 end
 
+---@param prefix string
+---@param value number
 local function decode(prefix, value)
     local name = MCP.util.DecodeEnum and MCP.util.DecodeEnum(prefix, value)
     return name or value
@@ -82,6 +91,7 @@ end
 -- Parent attach block: distinguishes an exterior portal (parented to a gmod_tardis / shell) from a
 -- free-standing one, and carries the parent's motion + the portal's local-space offset -- so callers
 -- stop hand-walking GetParent()/GetClass()/GetVelocity(). nil when the portal is unparented.
+---@param p linked_portal_door
 function wp_.ParentInfo(p)
     local par = p:GetParent()
     if not IsValid(par) then return nil end
@@ -102,6 +112,7 @@ end
 -- server-side). This invisible 4-slab hull is what actually blocks/funnels transiting PROPS, and its
 -- frame<->parent no-collide is what a SetThickness resize can orphan (a rebuilt physobj drops the old
 -- pair). nil when there's no frame (a 0-size portal never builds one) or on the client.
+---@param p linked_portal_door
 function wp_.FrameInfo(p)
     if not SERVER then return nil end
     local f = p.CollisionFrame
@@ -141,6 +152,8 @@ end
 -- The walk-up approach pose for player_walk: stand `standoff` units in front of the portal (on its
 -- normal side) facing back into it, so walking forward crosses the plane against the normal and
 -- triggers the teleport. Replaces the hand-rolled LocalToWorld+Forward*N / yaw+180 dance.
+---@param p linked_portal_door
+---@param standoff number
 function wp_.ApproachInfo(p, standoff)
     local fwd = p:GetForward()
     local ang = (-fwd):Angle()
@@ -153,6 +166,8 @@ function wp_.ApproachInfo(p, standoff)
 end
 
 -- Full structured snapshot. opts.approach_standoff (>0) adds the approach block.
+---@param p linked_portal_door
+---@param opts {approach_standoff: number?}?
 function wp_.PortalState(p, opts)
     opts = opts or {}
     local exit = p:GetExit()
@@ -211,6 +226,9 @@ end
 
 -- Lean survey row + optional `fields` enrichment (angles/forward/exit_pos_offset/parent/
 -- transparency/disappear_dist/custom_model/false_world).
+---@param p linked_portal_door
+---@param center Vector?
+---@param fields string[]?
 function wp_.PortalRow(p, center, fields)
     local exit = p:GetExit()
     local row = {

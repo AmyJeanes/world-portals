@@ -14,6 +14,7 @@ local function rebuild()
 end
 
 ---@api
+---@param portal linked_portal_door
 function wp.RegisterPortal(portal)
     if registered[portal] then return end
     registered[portal] = true
@@ -21,6 +22,7 @@ function wp.RegisterPortal(portal)
 end
 
 ---@api
+---@param portal Entity
 function wp.UnregisterPortal(portal)
     if not registered[portal] then return end
     registered[portal] = nil

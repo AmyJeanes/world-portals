@@ -11,6 +11,8 @@ util.AddNetworkString("WorldPortals_Teleport")
 
 local cvTpFraction = CreateConVar("worldportals_teleport_fraction", "0.9", FCVAR_ARCHIVE, "Fraction (0-1) of a prop's depth that must pass through a portal before it teleports: 0 = leading edge, 0.5 = centre, 1 = fully through", 0, 1)
 
+---@param key string
+---@param value string
 function ENT:KeyValue( key, value )
     if ( key == "partnername" ) then
         self:SetPartnerName( value )
@@ -76,6 +78,7 @@ end
 
 -- Teleportation for non-player entities (props/NPCs/ragdolls) only - players go
 -- through the predicted SetupMove path in sh_teleport.lua.
+---@param ent Entity
 function ENT:Touch( ent )
     if (not self:GetOpen()) or (not self:GetEnableTeleport()) then return end
     if ent:IsPlayer() then return end
@@ -172,6 +175,7 @@ end
 
 -- Restore parent collision when the prop leaves the doorway without teleporting
 -- (a teleport already disarms the entry in Touch). Idempotent if both fire.
+---@param ent Entity
 function ENT:EndTouch( ent )
     wp.DisarmNoCollide( ent, self )
 end
@@ -217,6 +221,10 @@ function ENT:OnRemove()
     end
 end
 
+---@param inputName string
+---@param activator Entity
+---@param caller Entity
+---@param data string
 function ENT:AcceptInput( inputName, activator, caller, data )
     if ( inputName == "SetPartner" ) then
         self:SetPartnerName( data )

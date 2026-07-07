@@ -55,6 +55,9 @@ ENT.Spawnable           = false
 ENT.AdminOnly           = false
 ENT.Editable            = false
 
+---@param w number?
+---@param h number?
+---@param t number?
 function ENT:SetupBounds(w, h, t)
     local width = w or self:GetWidth()
     local height = h or self:GetHeight()

@@ -25,6 +25,7 @@ local COLOR_CHILD_VISIBLE = Color(255, 140, 0, 220)
 local COLOR_CHILD_HIDDEN = Color(255, 220, 0, 220)
 
 -- Polygon is a flat array {x1, y1, x2, y2, ...}.
+---@param pts number[]
 local function drawScreenPolygon(pts)
     local n = #pts
     if n < 4 then return end
@@ -191,6 +192,7 @@ local function buildStatus()
     end
 end
 
+---@param p linked_portal_door
 local function statusColor(p)
     if stAtD1[p] then return C3_DIRECT end
     if (stMaxDepth[p] or 0) > 1 then return C3_CHILD end

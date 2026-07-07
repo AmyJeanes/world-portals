@@ -11,6 +11,7 @@ local function eyeInWater()
     return vo and bit.band( util.PointContents( vo ), CONTENTS_WATER ) ~= 0 or false
 end
 
+---@param exitPortal linked_portal_door
 function ENT:DrawPortal(exitPortal)
     local customModel = self:GetCustomModel()
     if customModel ~= "" then

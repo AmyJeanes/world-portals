@@ -25,10 +25,12 @@ wp.ghosts = wp.ghosts or {}   -- [entity] = record
 
 -- Lets a consumer that also drives ent's RenderOverride yield to us while we ghost it.
 ---@api
+---@param ent Entity
 function wp.IsGhosting(ent)
     return wp.ghosts[ent] ~= nil
 end
 
+---@param ent Entity
 local function isCandidate(ent)
     if not IsValid(ent) then return false end
     if ent.WPIsGhost then return false end
@@ -46,6 +48,7 @@ local function isCandidate(ent)
     return true
 end
 
+---@param ent Entity
 local function isTranslucent(ent)
     if ent:GetRenderMode() ~= RENDERMODE_NORMAL then return true end
     if ent:GetColor().a < 255 then return true end
@@ -54,15 +57,18 @@ end
 
 local ANGLE_ZERO = Angle()
 
+---@param ent Entity
 local function renderTransform(ent)
     return ent:GetRenderOrigin() or ent:GetPos(), ent:GetRenderAngles() or ent:GetAngles()
 end
 
+---@param ent Entity
 local function renderCenter(ent)
     local rpos, rang = renderTransform(ent)
     return LocalToWorld(ent:OBBCenter(), ANGLE_ZERO, rpos, rang)
 end
 
+---@param rec wp.GhostRecord
 local function poseGhost(rec)
     local rpos, rang = renderTransform(rec.ent)
     wp.TransformPortalPosInto(rec.posBuf, rpos, rec.portal, rec.exit)
@@ -85,6 +91,8 @@ local sCZ = {0, 0, 0, 0, 0, 0, 0, 0}
 
 -- Does ent's bounds cross the portal plane within the opening? Conservative - a
 -- near-miss just makes a fully-clipped, invisible ghost.
+---@param ent Entity
+---@param portal linked_portal_door
 local function straddles(ent, portal)
     local pos = portal:GetPos()
     local fwd = portal:GetForward()
@@ -143,12 +151,14 @@ end
 -- Seam offset = FACE_OFFSET + thickness: a thick portal is a tunnel of depth
 -- `thickness`, so the seam sits on its back face, else the doorway depth shows
 -- through.
+---@param portal linked_portal_door
 local function faceOffset(portal)
     return FACE_OFFSET + portal:GetThickness()
 end
 
 -- The exit clip plane (n . p = D) the ghost half is sliced on, at the exit's visible
 -- face, folding in its pos/ang offsets so an offset or relinked pair still seams.
+---@param rec wp.GhostRecord
 local function updateExitPlane(rec)
     local exit = rec.exit
     local xoff = faceOffset(exit)
@@ -171,6 +181,7 @@ local function updateExitPlane(rec)
 end
 
 -- The entry clip plane the real entity's half is sliced on, at the portal's visible face.
+---@param rec wp.GhostRecord
 local function updateEntryPlane(rec)
     local portal = rec.portal
     local eoff = faceOffset(portal)
@@ -182,6 +193,7 @@ end
 
 -- Mirror the original's appearance onto the ghost: model/skin/bodygroups/scale/
 -- materials diffed against a cached signature; colour/alpha applied at draw time.
+---@param rec wp.GhostRecord
 local function syncAppearance(rec)
     local ent, ghost, sig = rec.ent, rec.ghost, rec.sig
 
@@ -216,6 +228,9 @@ end
 -- depth pass never sees it and the shadow spills across the portal uncut. SetRenderClipPlane
 -- rides on the entity, so the engine applies it in every pass - model and cast shadow alike -
 -- slicing the shadow to the same half as the visible body. Disabled again on teardown.
+---@param ent Entity
+---@param nrm Vector
+---@param d number
 local function clipToHalf(ent, nrm, d)
     ent:SetRenderClipPlane(nrm, d)
     ent:SetRenderClipPlaneEnabled(true)
@@ -225,6 +240,7 @@ end
 -- so it tracks a fast-moving portal (mirror of the ghost's exit plane). Forwards the
 -- studio render flags to DrawModel and any chained override (e.g. the prop-spawn
 -- materialize effect reads them).
+---@param rec wp.GhostRecord
 local function makeOriginalOverride(rec)
     return function(self, flags)
         if IsValid(rec.portal) then
@@ -245,6 +261,9 @@ YAW180:SetAngles(Angle(0, 180, 0))
 -- Pose a skeletal ghost from the source's live skeleton: re-emit each world bone
 -- matrix through the portal. Done inside the RenderOverride because SetBoneMatrix
 -- is consumed by the next DrawModel (the engine's own SetupBones would clobber it).
+---@param rec wp.GhostRecord
+---@param src Entity
+---@param ghost Entity
 local function copyBonesThroughPortal(rec, src, ghost)
     src:SetupBones()
     ghost:SetupBones()
@@ -277,6 +296,7 @@ end
 -- inside the ghost (an in-your-face cutaway). Detect it as the render origin
 -- coinciding with where the pair maps the real eye; any other camera is far.
 local CUTAWAY_DIST_SQR = 64 * 64
+---@param rec wp.GhostRecord
 local function localGhostIsCutaway(rec)
     if rec.ent ~= LocalPlayer() then return false end
     if not wp.drawing then return false end
@@ -288,10 +308,13 @@ end
 -- region hidden from the open world (e.g. an interior tucked in the skybox), it must
 -- draw only in that region's portal RT, not the main scene. Per-draw, NOT cached
 -- (the answer differs between passes within one frame).
+---@param rec wp.GhostRecord
+---@param ghostEnt Entity
 local function ghostDrawVetoed(rec, ghostEnt)
     return hook.Call("wp-shouldghostdraw", GAMEMODE, rec.ent, ghostEnt, rec.portal, rec.exit) == false
 end
 
+---@param rec wp.GhostRecord
 local function makeGhostOverride(rec)
     return function(self, flags)
         local ent = rec.ent
@@ -343,6 +366,7 @@ end
 -- entry clip, a weapon ClientsideModel at the exit gets the exit clip. Poses by
 -- the same bone copy (its merge bones follow the hand).
 
+---@param rec wp.GhostRecord
 local function makeWeaponGhostOverride(rec)
     return function(self, flags)
         local w = rec.weapon
@@ -366,6 +390,7 @@ local function makeWeaponGhostOverride(rec)
     end
 end
 
+---@param rec wp.GhostRecord
 local function makeWeaponOriginalOverride(rec)
     return function(self, flags)
         if IsValid(rec.portal) then
@@ -381,6 +406,7 @@ local function makeWeaponOriginalOverride(rec)
 end
 
 -- Safe to call when no weapon is tracked.
+---@param rec wp.GhostRecord
 local function clearWeapon(rec)
     if IsValid(rec.weaponGhost) then rec.weaponGhost:Remove() end
     rec.weaponGhost = nil
@@ -403,14 +429,20 @@ end
 -- draw with SetModel/SetSkin/DrawModel intercepted (scoped to this weapon, nothing
 -- rendered) to capture the model it would set; fall back to GetModel if it sets none.
 local entMeta = assert(FindMetaTable("Entity"))
+---@param w Entity
 local function resolveWeaponWorldModel(w)
     if not isfunction(w.DrawWorldModel) then
         return w:GetModel(), w:GetSkin()
     end
     local model, skin
     local oSet, oSkin, oDraw = entMeta.SetModel, entMeta.SetSkin, entMeta.DrawModel
+    ---@param s Entity
+    ---@param m string
     entMeta.SetModel = function(s, m) if s == w then model = m return end return oSet(s, m) end
+    ---@param s Entity
+    ---@param k number
     entMeta.SetSkin = function(s, k) if s == w then skin = k return end return oSkin(s, k) end
+    ---@param s Entity
     entMeta.DrawModel = function(s, ...) if s == w then return end return oDraw(s, ...) end
     pcall(w.DrawWorldModel, w)
     entMeta.SetModel, entMeta.SetSkin, entMeta.DrawModel = oSet, oSkin, oDraw
@@ -420,6 +452,7 @@ end
 -- Keep the weapon sub-ghost in step with the NPC/player's active weapon. The
 -- ghost root is parked at the transformed weapon pose only for culling - its
 -- bones are placed in world space by the override.
+---@param rec wp.GhostRecord
 local function updateWeapon(rec)
     local ent = rec.ent
     if not (ent:IsNPC() or ent:IsPlayer()) then return end
@@ -491,6 +524,7 @@ end
 
 -- Install our entry-plane clip on the original, chaining any pre-existing
 -- RenderOverride (a consumer's) so it still runs - just clipped.
+---@param rec wp.GhostRecord
 local function ensureOriginalOverride(rec)
     local ent = rec.ent
     if ent.RenderOverride ~= rec.originalOverride then
@@ -499,6 +533,7 @@ local function ensureOriginalOverride(rec)
     end
 end
 
+---@param rec wp.GhostRecord
 local function endStraddle(rec)
     if IsValid(rec.ghost) then rec.ghost:Remove() end
     if IsValid(rec.ent) and rec.ent.RenderOverride == rec.originalOverride then
@@ -513,8 +548,8 @@ end
 
 ---@class wp.GhostRecord
 ---@field ent Entity
----@field portal Entity
----@field exit Entity
+---@field portal linked_portal_door
+---@field exit linked_portal_door
 ---@field ghost Entity
 ---@field isLocalPlayer boolean
 ---@field skeletal boolean
@@ -543,6 +578,8 @@ end
 ---@field weaponSavedOverride function?
 ---@field weaponShadowReady boolean?
 
+---@param ent Entity
+---@param portal linked_portal_door
 ---@return wp.GhostRecord?
 local function startStraddle(ent, portal)
     local exit = portal:GetExit()
@@ -592,6 +629,7 @@ local function startStraddle(ent, portal)
 end
 
 ---@param rec wp.GhostRecord
+---@param now number
 local function updateStraddle(rec, now)
     rec.lastSeen = now
 
@@ -636,6 +674,7 @@ local nextScan = 0
 -- origins, and an origin can sit far from the geometry that matters on BOTH sides of the
 -- search: a prop's origin (e.g. a ladder's might be at one end) and a portal's (its box sits
 -- behind the face, offset by 5 + thickness/2, and grows with width/height). Used for both.
+---@param ent Entity
 local function reachOf(ent)
     return ent:OBBCenter():Length() + ent:BoundingRadius()
 end
@@ -651,6 +690,7 @@ local maxReach = 0
 -- Set a minimum so a straddling player/NPC/ragdoll is found even when no large props exist
 local REACH_FLOOR = 256  
 
+---@param ent Entity
 local function trackReach(ent)
     if not IsValid(ent) then return end
     if ent:GetClass() == "prop_physics" or ent:IsRagdoll() or ent:IsNPC() or ent:IsPlayer() then
@@ -687,6 +727,8 @@ end)
 -- wp-shouldrender which is view-dependent and would vanish the ghost when you step
 -- into a far-off interior. nil = no veto = ghost; a missed server-only veto just
 -- shows a ghost that stays fully clipped (harmless).
+---@param portal linked_portal_door
+---@param ent Entity
 local function wouldTeleport(portal, ent)
     return hook.Call("wp-shouldtp", GAMEMODE, portal, ent) ~= false
 end
