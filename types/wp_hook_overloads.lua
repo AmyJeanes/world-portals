@@ -1,0 +1,20 @@
+-- Generated custom global-hook overloads. Do not edit; regen: scripts/generate-hook-types.ps1.
+-- Sync-GmodHookTypes (Initialize-GmodTools) splices these into .tools/glua-api/hook.lua so
+-- hook.Add("<name>", ...) callbacks type their payload params. Inert on its own - the splice binds.
+
+---@param eventName string
+---@param identifier any
+---@param func function
+---@overload fun(eventName: "wp-allowthickportal", identifier: any, func: fun(arg1: any, exitPortal: linked_portal_door, ...))
+---@overload fun(eventName: "wp-nocollide", identifier: any, func: fun(portal: linked_portal_door, ent: Entity, ...))
+---@overload fun(eventName: "wp-postdraw", identifier: any, func: fun(arg1: linked_portal_door, exitPortal: linked_portal_door, ...))
+---@overload fun(eventName: "wp-postrender", identifier: any, func: fun(portal: linked_portal_door, exitPortal: Entity, plyOrigin: Vector, depth: number, ...))
+---@overload fun(eventName: "wp-predraw", identifier: any, func: fun(arg1: linked_portal_door, exitPortal: linked_portal_door, ...))
+---@overload fun(eventName: "wp-prerender", identifier: any, func: fun(portal: linked_portal_door, exitPortal: Entity, plyOrigin: Vector, depth: number, ...))
+---@overload fun(eventName: "wp-shouldghostdraw", identifier: any, func: fun(arg1: Entity, ghostEnt: Entity, arg3: linked_portal_door, arg4: linked_portal_door, ...))
+---@overload fun(eventName: "wp-shouldrender", identifier: any, func: fun(portal: linked_portal_door, exitPortal: linked_portal_door, camOrigin: Vector, camAngle: Angle, camFOV: number, renderDepth: any, ...))
+---@overload fun(eventName: "wp-shouldtp", identifier: any, func: fun(portal: any, ply: Player, ...))
+---@overload fun(eventName: "wp-teleport", identifier: any, func: fun(portal: Entity, ent: Entity, new_pos: Vector, new_angle: Angle, ...))
+---@overload fun(eventName: "wp-trace", identifier: any, func: fun(arg1: any, ...))
+---@overload fun(eventName: "wp-tracefilter", identifier: any, func: fun(arg1: any, ...))
+function hook.Add(eventName, identifier, func) end

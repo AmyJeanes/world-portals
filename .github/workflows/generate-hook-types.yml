@@ -1,0 +1,53 @@
+name: Generate Hook Types
+
+on:
+  push:
+    branches:
+    - dev
+    paths:
+    - lua/**
+    - scripts/generate-hook-types.ps1
+    - scripts/bootstrap.ps1
+    - scripts/install-tools.ps1
+    - .github/workflows/generate-hook-types.yml
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate_hook_types:
+    name: Generate Hook Types
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          path: world-portals
+          token: ${{ secrets.TOKEN }}
+
+      - name: Checkout gmod-addon-tools
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          repository: AmyJeanes/gmod-addon-tools
+          # renovate: datasource=github-tags depName=AmyJeanes/gmod-addon-tools
+          ref: v0.14.0
+          path: gmod-addon-tools
+
+      - name: Install tooling
+        working-directory: world-portals
+        run: ./scripts/install-tools.ps1
+        shell: pwsh
+
+      - name: Generate hook types
+        working-directory: world-portals
+        run: ./scripts/generate-hook-types.ps1
+        shell: pwsh
+
+      - name: Commit
+        uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7
+        with:
+          repository: world-portals
+          commit_message: "Update generated hook overloads"
