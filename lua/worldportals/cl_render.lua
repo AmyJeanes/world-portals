@@ -26,7 +26,6 @@ local THICK_PORTAL_POS = Vector()
 
 -- Reused across every render.RenderView call this frame to avoid allocating
 -- a fresh view struct per portal render (was driving GC hitches).
----@type ViewData
 wp._renderView = {
     x = 0,
     y = 0,
@@ -41,7 +40,7 @@ wp._renderView = {
     drawmonitors = false,
     drawviewmodel = false,
     bloomtone = true,
-    viewid = 1, -- VIEW_3DSKY
+    viewid = 1, -- VIEW_3DSKY value; the enum isn't a Lua global at runtime, so the literal
     zfar = nil,
 }
 
@@ -989,7 +988,8 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
                                 + efy * (exit_pos.y - efy * 0.5)
                                 + efz * (exit_pos.z - efz * 0.5)
                     render.PushCustomClipPlane( exit_forward, clipD )
-                        render.RenderView( rv )
+                        -- render.RenderView is our own ViewData?-typed override; rv is the reused ViewData struct.
+                        render.RenderView( rv --[[@as ViewData]] )
                     wp.drawing = oldDrawing
                     wp.drawingent = oldDrawingEnt
                     wp.drawingdepth = oldDrawingDepth
