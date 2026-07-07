@@ -352,7 +352,7 @@ local function makeWeaponGhostOverride(rec)
         if localGhostIsCutaway(rec) then return end
         if ghostDrawVetoed(rec, self) then return end
         if SysTime() - rec.lastSeen > GHOST_GRACE then return end  -- stop at grace, no bind-pose flash (see makeGhostOverride)
-        copyBonesThroughPortal(rec, w, self)
+        copyBonesThroughPortal(rec, IsValid(rec.weaponPose) and rec.weaponPose or w, self)
         updateExitPlane(rec)
         clipToHalf(self, rec.exitNrm, rec.exitD)
         local c = w:GetColor()
@@ -384,15 +384,37 @@ end
 local function clearWeapon(rec)
     if IsValid(rec.weaponGhost) then rec.weaponGhost:Remove() end
     rec.weaponGhost = nil
+    if IsValid(rec.weaponPose) then rec.weaponPose:Remove() end
+    rec.weaponPose = nil
     if IsValid(rec.weapon) and rec.weapon.RenderOverride == rec.weaponOriginalOverride then
         rec.weapon.RenderOverride = rec.weaponSavedOverride
         rec.weapon:SetRenderClipPlaneEnabled(false)
     end
     rec.weapon = nil
     rec.weaponModel = nil
+    rec.weaponSkin = nil
     rec.weaponSavedOverride = nil
     rec.weaponHasDrawn = nil      -- a new weapon ghost re-establishes its shadow
     rec.weaponShadowReady = nil
+end
+
+-- The world model a weapon actually draws can differ from GetModel: some carry a
+-- placeholder model and swap to the real one inside DrawWorldModel. Dry-run that
+-- draw with SetModel/SetSkin/DrawModel intercepted (scoped to this weapon, nothing
+-- rendered) to capture the model it would set; fall back to GetModel if it sets none.
+local entMeta = assert(FindMetaTable("Entity"))
+local function resolveWeaponWorldModel(w)
+    if not isfunction(w.DrawWorldModel) then
+        return w:GetModel(), w:GetSkin()
+    end
+    local model, skin
+    local oSet, oSkin, oDraw = entMeta.SetModel, entMeta.SetSkin, entMeta.DrawModel
+    entMeta.SetModel = function(s, m) if s == w then model = m return end return oSet(s, m) end
+    entMeta.SetSkin = function(s, k) if s == w then skin = k return end return oSkin(s, k) end
+    entMeta.DrawModel = function(s, ...) if s == w then return end return oDraw(s, ...) end
+    pcall(w.DrawWorldModel, w)
+    entMeta.SetModel, entMeta.SetSkin, entMeta.DrawModel = oSet, oSkin, oDraw
+    return model or w:GetModel(), skin or w:GetSkin()
 end
 
 -- Keep the weapon sub-ghost in step with the NPC/player's active weapon. The
@@ -403,7 +425,11 @@ local function updateWeapon(rec)
     if not (ent:IsNPC() or ent:IsPlayer()) then return end
 
     local w = ent:GetActiveWeapon()
-    local model = IsValid(w) and w:GetModel() or nil
+    if not IsValid(w) then
+        clearWeapon(rec)
+        return
+    end
+    local model, skin = resolveWeaponWorldModel(w)
     if not model or model == "" then
         clearWeapon(rec)
         return
@@ -420,10 +446,27 @@ local function updateWeapon(rec)
         wc:DrawShadow(not rec.isLocalPlayer)   -- CreateShadow below once it has drawn (see startStraddle)
         wc.RenderOverride = makeWeaponGhostOverride(rec)
         rec.weaponGhost = wc
+
+        -- Bone source for the ghost. A weapon that swaps to its real world model inside
+        -- DrawWorldModel leaves the live weapon posing the placeholder skeleton, so copying
+        -- its bones onto the resolved-model ghost would mismatch. Bonemerge a hidden clone of
+        -- the resolved model to the holder instead: it shares the ghost's skeleton and its
+        -- bones follow the hand.
+        local pose = ClientsideModel(model, RENDERGROUP_OPAQUE)
+        if IsValid(pose) then
+            pose:Spawn()
+            pose.WPIsGhost = true
+            pose:SetNoDraw(true)
+            pose:SetParent(ent)
+            pose:AddEffects(EF_BONEMERGE)
+            rec.weaponPose = pose
+        end
+
         rec.weaponModel = model
         rec.weaponOriginalOverride = rec.weaponOriginalOverride or makeWeaponOriginalOverride(rec)
     end
     rec.weapon = w
+    rec.weaponSkin = skin
 
     if w.RenderOverride ~= rec.weaponOriginalOverride then
         rec.weaponSavedOverride = w.RenderOverride
@@ -435,7 +478,7 @@ local function updateWeapon(rec)
         wp.TransformPortalAngleInto(rec.angBuf, w:GetAngles(), rec.portal, rec.exit)
         rec.weaponGhost:SetPos(rec.posBuf)
         rec.weaponGhost:SetAngles(rec.angBuf)
-        rec.weaponGhost:SetSkin(w:GetSkin())
+        rec.weaponGhost:SetSkin(skin or 0)
 
         -- Sun/RTT shadow once the weapon ghost has drawn, same as the body ghost (see updateStraddle):
         -- the Think re-renders it each frame via MarkShadowAsDirty so it tracks the hand.
@@ -492,8 +535,10 @@ end
 ---@field shadowReady boolean?
 ---@field weapon Entity?
 ---@field weaponGhost Entity?
+---@field weaponPose Entity?
 ---@field weaponHasDrawn boolean?
 ---@field weaponModel string?
+---@field weaponSkin number?
 ---@field weaponOriginalOverride function?
 ---@field weaponSavedOverride function?
 ---@field weaponShadowReady boolean?
