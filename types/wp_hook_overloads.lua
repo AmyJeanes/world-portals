@@ -5,7 +5,7 @@
 ---@param eventName string
 ---@param identifier any
 ---@param func function
----@overload fun(eventName: "wp-allowthickportal", identifier: any, func: fun(arg1: any, exitPortal: linked_portal_door, ...))
+---@overload fun(eventName: "wp-allowthickportal", identifier: any, func: fun(arg1: linked_portal_door, exitPortal: linked_portal_door, ...))
 ---@overload fun(eventName: "wp-nocollide", identifier: any, func: fun(portal: linked_portal_door, ent: Entity, ...))
 ---@overload fun(eventName: "wp-postdraw", identifier: any, func: fun(arg1: linked_portal_door, exitPortal: linked_portal_door, ...))
 ---@overload fun(eventName: "wp-postrender", identifier: any, func: fun(portal: linked_portal_door, exitPortal: Entity, plyOrigin: Vector, depth: number, ...))
