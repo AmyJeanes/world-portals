@@ -71,7 +71,14 @@ function ENT:BuildFrame(width, height, thickness)
         self.ParentNoCollides = nil
     end
     wp.NoCollideFrame(self, self.Portal)
+    if self.CollisionEnabled == false then self:SetCollisionGroup(COLLISION_GROUP_IN_VEHICLE) end
     return true
+end
+
+---@param enabled boolean
+function ENT:SetCollisionEnabled(enabled)
+    self.CollisionEnabled = enabled
+    self:SetCollisionGroup(enabled and COLLISION_GROUP_WEAPON or COLLISION_GROUP_IN_VEHICLE)
 end
 
 -- Follow the portal WITHOUT being parented, driving both the entity transform and

@@ -13,6 +13,8 @@ end
 
 local FILL = Color(0, 180, 255, 50)
 local WIRE = Color(0, 230, 255, 255)
+local FILL_OFF = Color(255, 60, 60, 50)
+local WIRE_OFF = Color(255, 90, 90, 255)
 
 -- Reuses ENT:FrameSlabs (the server hull's own builder) so the overlay is exactly
 -- the collision shape.
@@ -28,11 +30,14 @@ hook.Add("PostDrawTranslucentRenderables", "WorldPortals_DebugCollision", functi
             local slabs = fr:FrameSlabs(portal:GetWidth(), portal:GetHeight(), portal:GetThickness())
             if slabs then
                 local pos, ang = fr:GetPos(), fr:GetAngles()
+                local on = fr:GetCollisionGroup() == COLLISION_GROUP_WEAPON
+                local fill = on and FILL or FILL_OFF
+                local wire = on and WIRE or WIRE_OFF
                 for _, s in ipairs(slabs) do
                     local mn = Vector(s[1], s[3], s[5])
                     local mx = Vector(s[2], s[4], s[6])
-                    render.DrawBox(pos, ang, mn, mx, FILL)
-                    render.DrawWireframeBox(pos, ang, mn, mx, WIRE, true)
+                    render.DrawBox(pos, ang, mn, mx, fill)
+                    render.DrawWireframeBox(pos, ang, mn, mx, wire, true)
                 end
             end
         end

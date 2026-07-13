@@ -209,11 +209,20 @@ function ENT:RebuildCollisionFrame()
         self.CollisionFrame = f
     end
     f:BuildFrame(w, h, self:GetThickness())
+    f:SetCollisionEnabled(self.FrameCollisionEnabled ~= false)
     -- No-collide the (unparented) frame with the parent it sits in NOW, before the
     -- next physics tick: an overlapping solid hull would interpenetrate that parent
     -- and the physics solver would violently shove it away. The frame's Think
     -- re-checks this periodically in case the parent is parented late.
     wp.NoCollideFrame(f, self)
+end
+
+---@param enabled boolean
+function ENT:SetFrameCollisionEnabled(enabled)
+    self.FrameCollisionEnabled = enabled
+    if IsValid(self.CollisionFrame) then
+        self.CollisionFrame:SetCollisionEnabled(enabled)
+    end
 end
 
 function ENT:OnRemove()
