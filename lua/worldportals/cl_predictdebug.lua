@@ -88,12 +88,13 @@ hook.Add("HUDPaint", "WorldPortals_DebugPredictHUD", function()
         local age = SysTime() - (wp.predictedAt or 0)
         local dNet = netPos - pos
         local dPred = wp.predictedPos - pos
-        local sanityState = wp.predictSanityFailed and "SANITY-FAIL (NetOrigin stale)" or "OK"
+        local sanityState = wp.predictSanityFailed and "SANITY-FAIL (NetOrigin stale)"
+            or wp.predictDeadzoned and "DEADZONED (shift skipped)" or "OK"
         line(string.format("Predict-lerp: ARMED  tgt=%.1f,%.1f,%.1f  age=%.4fs",
             wp.predictedPos.x, wp.predictedPos.y, wp.predictedPos.z, age),
             Color(120, 255, 180))
-        line(string.format("  shift = NetOrigin - Pos = %.1f,%.1f,%.1f  (|=%.1f)",
-            dNet.x, dNet.y, dNet.z, dNet:Length()),
+        line(string.format("  shift = NetOrigin - Pos = %.1f,%.1f,%.1f  (|=%.1f, dz=%.1f)",
+            dNet.x, dNet.y, dNet.z, dNet:Length(), wp.predictDeadzoneNow or 0),
             Color(120, 255, 180))
         line(string.format("  predictedPos - Pos = %.1f,%.1f,%.1f  (|=%.1f)  sanity=%s",
             dPred.x, dPred.y, dPred.z, dPred:Length(), sanityState),

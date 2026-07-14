@@ -48,7 +48,19 @@ local function getPredictDelta(ply)
         end
     end
     wp.predictSanityFailed = nil
-    return netPos - ply:GetPos()
+    local delta = netPos - ply:GetPos()
+    local dist = delta:Length()
+    -- netPos steps per server tick vs per-frame GetPos, so the gap sawtooths up to a
+    -- tick of movement at zero lag - skip under two ticks (kills host stutter, window
+    -- stays armed). Above that is real lag: full shift, camera exactly on server pos.
+    local deadzone = ply:GetVelocity():Length() * engine.TickInterval() * 2
+    wp.predictDeadzoneNow = deadzone
+    if dist <= deadzone then
+        wp.predictDeadzoned = true
+        return
+    end
+    wp.predictDeadzoned = nil
+    return delta
 end
 
 -- Combines three post-teleport view corrections: the predict-lerp shift, the
