@@ -4,6 +4,10 @@ World portals inspired by Overv's Portal Project and Portal 2's `linked_portal_d
 
 Originally by [@bliptec](https://github.com/bliptec) but now updated and maintained by [@AmyJeanes](https://github.com/AmyJeanes).
 
+Documentation
+=
+[Wiki](https://github.com/AmyJeanes/world-portals/wiki)
+
 Installation
 =
 ### Steam Workshop
