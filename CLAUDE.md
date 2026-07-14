@@ -8,6 +8,8 @@ A Garry's Mod (Lua) addon shipping the `linked_portal_door` entity and a small `
 
 This is the **base layer** other addons build on. The main consumer is `AmyJeanes/Doors` (TARDIS-style doors): it builds exterior↔interior teleporting on `linked_portal_door` and uses `wp.TransformPortal*` for view/velocity transforms. Doors' CI combines both repos into one Workshop upload, so paths here can collide with Doors at upload time (consumer wins) — hence no `addon.json`. `.github/workflows/ci.yml` runs `glua_check` on push/PR to `dev`.
 
+**Publishing a `dev` change to the Workshop needs a Doors bump.** This repo has no Workshop upload of its own — the beta addon publishes from Doors' `dev` CI, which bundles the world-portals `dev` it checks out at that time. So after pushing to world-portals `dev`, push an empty commit (`git commit --allow-empty`) to Doors' `dev` to trigger its CI and pick the new base code up onto the Workshop.
+
 ## Architecture
 
 ### Module layout
