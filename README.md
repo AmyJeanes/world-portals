@@ -12,8 +12,8 @@ Installation
 =
 ### Steam Workshop
 world-portals is bundled with [Doors](https://github.com/AmyJeanes/Doors) in:
-- [Doors (World Portals)](https://steamcommunity.com/workshop/filedetails/?id=499280258) (release branch, stable)
-- [Doors (World Portals) (Beta)](https://steamcommunity.com/sharedfiles/filedetails/?id=3574760963) (dev branch, less stable)
+- [Doors (World Portals)](https://steamcommunity.com/workshop/filedetails/?id=499280258) (latest release, stable)
+- [Doors (World Portals) (Beta)](https://steamcommunity.com/sharedfiles/filedetails/?id=3574760963) (main branch, less stable)
 
 ### Manual installation
 Remove any previous versions then put this folder into Steam/Steamapps/common/garrysmod/garrysmod/addons/

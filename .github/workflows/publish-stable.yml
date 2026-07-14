@@ -18,4 +18,4 @@ jobs:
       - name: Dispatch the Doors stable release workflow
         env:
           GH_TOKEN: ${{ secrets.TOKEN }}
-        run: gh workflow run release.yml --repo AmyJeanes/Doors --ref dev
+        run: gh workflow run release.yml --repo AmyJeanes/Doors --ref main

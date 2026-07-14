@@ -3,7 +3,7 @@ name: Generate CLAUDE.md
 on:
   push:
     branches:
-    - dev
+    - main
     paths:
     - CLAUDE.md
     - scripts/generate-claude-md.ps1

@@ -3,7 +3,7 @@ name: Generate Wiki
 on:
   push:
     branches:
-    - dev
+    - main
     paths:
     - lua/**
     - scripts/generate-wiki-api.ps1

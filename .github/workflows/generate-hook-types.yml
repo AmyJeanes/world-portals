@@ -3,7 +3,7 @@ name: Generate Hook Types
 on:
   push:
     branches:
-    - dev
+    - main
     paths:
     - lua/**
     - scripts/generate-hook-types.ps1

@@ -3,10 +3,10 @@ name: Typing Check
 on:
   pull_request:
     branches:
-      - dev
+      - main
   push:
     branches:
-      - dev
+      - main
       - renovate/*
   workflow_dispatch:
 
