@@ -10,6 +10,8 @@ This is the **base layer** other addons build on. The main consumer is `AmyJeane
 
 **Publishing a `dev` change to the Workshop is automatic.** This repo has no Workshop upload of its own — the beta addon publishes from Doors' `dev` CI, which bundles the world-portals `dev` it checks out at that time. A green push to world-portals `dev` fires the `trigger-doors` job in `ci.yml`, which dispatches Doors' beta publish (`workflow_dispatch` on Doors `ci.yml`) via the `TOKEN` PAT — skipped when a Doors `dev` build has already run since this commit, so a coordinated Doors push isn't double-published.
 
+**Stable publishes on a full GitHub release.** A release (not a prerelease) on world-portals or Doors ships the stable Workshop item, which bundles the **latest release** of both addons — resolved fresh each run, so either repo's release triggers it (`publish-stable.yml` here dispatches Doors' `release.yml`). Write a `## Summary` in the release body: its first paragraph becomes the Steam change note (plain prose — Steam is BBCode, not Markdown); the version links are automatic. Doors' `LAST_STABLE_PAIR` repo variable dedups the same tag pair.
+
 ## Architecture
 
 ### Module layout
