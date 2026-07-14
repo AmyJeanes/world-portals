@@ -33,6 +33,7 @@ hook.Add("EntityRemoved", "WorldPortals_Portals", function(ent)
     if registered[ent] then wp.UnregisterPortal(ent) end
 end)
 
+-- Clientside ENTITY:Initialize only fires on a portal's first create; during the connect burst the client re-creates it, so re-register here.
 hook.Add("NetworkEntityCreated", "WorldPortals_Portals", function(ent)
     if IsValid(ent) and ent:GetClass() == "linked_portal_door" then
         wp.RegisterPortal(ent)
