@@ -1,0 +1,21 @@
+name: Publish stable to Workshop
+
+# A full world-portals release ships the stable Doors (World Portals) Workshop item;
+# Doors resolves the latest release of both addons itself, so this just kicks it.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch-doors:
+    name: Trigger Doors stable publish
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch the Doors stable release workflow
+        env:
+          GH_TOKEN: ${{ secrets.TOKEN }}
+        run: gh workflow run release.yml --repo AmyJeanes/Doors --ref dev
