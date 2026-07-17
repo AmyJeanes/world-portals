@@ -80,10 +80,17 @@ local PORTAL_EXCLUDED_CLASSES = {
     linked_portal_frame = true,
 }
 
+-- One of our own portal entities (the door or its collision frame), not a crossing body.
+---@param ent Entity
+---@return boolean
+function wp.IsPortalEntity( ent )
+    return PORTAL_EXCLUDED_CLASSES[ent:GetClass()] ~= nil
+end
+
 ---@param ent Entity
 ---@return boolean
 function wp.IsPhysicalMover( ent )
-    if PORTAL_EXCLUDED_CLASSES[ent:GetClass()] then return false end
+    if wp.IsPortalEntity( ent ) then return false end
     return ent:GetMoveType() == MOVETYPE_VPHYSICS
         or ent:IsRagdoll() or ent:IsNPC() or ent:IsPlayer()
 end

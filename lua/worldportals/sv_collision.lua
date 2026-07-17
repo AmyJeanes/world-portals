@@ -20,8 +20,7 @@ local function eligible(ent, portal)
     if not IsValid(ent) then return false end
     if ent:IsPlayer() then return false end
     if ent.WPIsGhost then return false end
-    local cls = ent:GetClass()
-    if cls == "linked_portal_door" or cls == "linked_portal_frame" then return false end
+    if wp.IsPortalEntity( ent ) then return false end
     if not IsValid(ent:GetPhysicsObject()) then return false end
 
     -- Contraption guard: don't disturb a prop that rides the portal's parent
@@ -35,10 +34,6 @@ local function eligible(ent, portal)
     return true
 end
 
--- A NoCollide binds no relative motion (and our own pass-through no-collides would
--- otherwise bridge the mount/shell into the set), so it never groups a contraption.
-local RIGID_SKIP_TYPE = { NoCollide = true }
-
 ---@class wp.ConstraintEnt
 ---@field Entity Entity
 ---@field World boolean
@@ -47,14 +42,10 @@ local RIGID_SKIP_TYPE = { NoCollide = true }
 ---@field Type string
 ---@field Entity wp.ConstraintEnt[]
 
--- Walk `seed`'s constraint network over rigid edges only (weld/rope/axis/... - not
--- NoCollide) and return every physics-bearing member, so a welded/roped contraption
--- teleports as one rigid body: the same portal transform applied to every member in a
--- single tick keeps the constraints satisfied. Returns nil to veto the whole move - the
--- group is anchored to the world (can't move the map; GetAllConstrainedEntities hides
--- the world, so we read con.Entity[i].World ourselves) or to map machinery (a brush
--- mover like a func_door), reaches the portal's own mount (it "rides" the portal), or a
--- member a consumer's wp-shouldtp rejects (atomic).
+-- Walk `seed`'s constraint network over rigid edges (skipping NoCollide) and return every
+-- physics-bearing member, so a contraption teleports as one rigid body. Returns nil to veto
+-- the whole move if the group is anchored to the world or map machinery, rides the portal,
+-- or a member fails wp-shouldtp - a partial move would snap it.
 ---@param seed Entity
 ---@param portal linked_portal_door
 ---@return Entity[]?
@@ -69,8 +60,7 @@ function wp.GatherRigidGroup(seed, portal)
         if wp.RidesPortal(e, portal) then return nil end
         if hook.Call("wp-shouldtp", GAMEMODE, portal, e) == false then return nil end
 
-        local cls = e:GetClass()
-        if cls ~= "linked_portal_door" and cls ~= "linked_portal_frame" then
+        if not wp.IsPortalEntity( e ) then
             -- A physics shadow makes a brush/scripted mover (func_door) look constrainable,
             -- but it's map machinery - same bucket as a world anchor: veto, don't derail it.
             if not wp.IsPhysicalMover(e) then return nil end
@@ -79,8 +69,12 @@ function wp.GatherRigidGroup(seed, portal)
             end
             for _, con in ipairs(constraint.GetTable(e)) do
                 ---@cast con wp.Constraint
-                if not RIGID_SKIP_TYPE[con.Type] then
+                -- Skip NoCollide edges: they bind no relative motion, and our own pass-through
+                -- no-collides would otherwise bridge the mount into the set.
+                if con.Type ~= "NoCollide" then
                     for _, info in pairs(con.Entity) do
+                        -- A constraint end pinned to the map (GetAllConstrainedEntities hides
+                        -- these) - can't move the world, so veto.
                         if info.World then return nil end
                         local n = info.Entity
                         -- Never walk into a player (they teleport only via the predicted
@@ -107,8 +101,7 @@ local function gatherPhaseSolids(portal, ent)
     local solids, seen = {}, {}
     for _, e in ipairs(extra) do
         if IsValid(e) and not seen[e] and e ~= ent and not e.WPIsGhost then
-            local cls = e:GetClass()
-            if cls ~= "linked_portal_door" and cls ~= "linked_portal_frame" and IsValid(e:GetPhysicsObject()) then
+            if not wp.IsPortalEntity( e ) and IsValid(e:GetPhysicsObject()) then
                 seen[e] = true
                 solids[#solids + 1] = e
             end

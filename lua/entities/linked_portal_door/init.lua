@@ -84,8 +84,7 @@ local TP_REFIRE_COOLDOWN = 0.2   -- group bounce guard; ~cl_renderfollow's RAPID
 
 -- Move one body through the portal: transform pos/vel/angle, snapshot and re-apply a
 -- ragdoll's physics-object poses around SetPos, disarm the entry, fire outputs/hook,
--- broadcast. Shared by the single-prop and rigid-group paths. Wake() matters for the
--- group - a sleeping member won't re-register with the solver or triggers after SetPos.
+-- broadcast. Shared by the single-prop and rigid-group paths.
 ---@param ent Entity
 ---@param portal linked_portal_door
 ---@param exit linked_portal_door
@@ -111,7 +110,7 @@ local function applyTeleport( ent, portal, exit )
     local phys = ent:GetPhysicsObject()
     if IsValid(phys) then
         phys:SetVelocityInstantaneous( new_velocity )
-        phys:Wake()
+        phys:Wake()   -- a sleeping group member won't re-register with the solver/triggers after SetPos
     end
 
     -- Disarm the entry explicitly - a SetPos teleport can skip its EndTouch, leaving the
@@ -213,12 +212,8 @@ function ENT:Touch( ent )
         return
     end
 
-    -- Rigid group: the same depth-fraction cvar, generalised to the whole contraption.
-    -- Project every member's OBB corners onto the portal normal for the group's extent and
-    -- depth-along-normal; the combined-bounds centre gates the opening; mass-weighted
-    -- momentum gates direction. At the default 0.9 the group jumps once ~90% of its depth
-    -- has passed (leading end pokes further out the entry, exit emergence stays clean);
-    -- lower the cvar to jump earlier.
+    -- Rigid group: the single-prop gates generalised to the whole contraption - member OBB
+    -- corners give the combined depth and centre, mass-weighted momentum gives direction.
     local ppos = self:GetPos()
     local nMin, nMax = math.huge, -math.huge
     local minx, miny, minz = math.huge, math.huge, math.huge
@@ -250,11 +245,10 @@ function ENT:Touch( ent )
     end
     if totalMass <= 0 then return end
 
-    -- Direction gate on the group's aggregate momentum: the seed can transiently reverse
-    -- on a spinning contraption while the bulk still advances.
+    -- Only cross while the group is on average approaching the portal.
     if momentum:Dot( normal ) >= 0 then return end
 
-    -- In-face gate on the combined-bounds centre.
+    -- Gate on the opening (as single-prop): the combined-bounds centre must sit in the door's face.
     local gc = Vector( (minx + maxx) * 0.5, (miny + maxy) * 0.5, (minz + maxz) * 0.5 )
     local lc = self:WorldToLocal( gc )
     local cmins, cmaxs = self:GetCollisionBounds()
