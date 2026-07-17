@@ -110,7 +110,7 @@ local function applyTeleport( ent, portal, exit )
     local phys = ent:GetPhysicsObject()
     if IsValid(phys) then
         phys:SetVelocityInstantaneous( new_velocity )
-        phys:Wake()   -- a sleeping group member won't re-register with the solver/triggers after SetPos
+        phys:Wake() -- a sleeping group member won't re-register with the solver/triggers after SetPos
     end
 
     -- Disarm the entry explicitly - a SetPos teleport can skip its EndTouch, leaving the
@@ -141,11 +141,73 @@ local function applyTeleport( ent, portal, exit )
     net.Broadcast()
 end
 
--- Teleportation for non-player entities (props/NPCs/ragdolls) only - players go
--- through the predicted SetupMove path in sh_teleport.lua. A welded/roped contraption
--- teleports as one rigid body (wp.GatherRigidGroup): applying the same portal transform
--- to every member in a single tick keeps the constraints satisfied, so the solver never
--- sees a half-crossed contraption to snap.
+-- Is a world point inside the portal's opening (its y/z face)? Gates out the engine
+-- trigger's over-fire for a thick, rotated portal.
+---@param portal linked_portal_door
+---@param worldPoint Vector
+---@return boolean
+local function inFace( portal, worldPoint )
+    local lc = portal:WorldToLocal( worldPoint )
+    local cmins, cmaxs = portal:GetCollisionBounds()
+    return lc.y >= cmins.y and lc.y <= cmaxs.y and lc.z >= cmins.z and lc.z <= cmaxs.z
+end
+
+---@class wp.GroupSpan
+---@field mass number
+---@field momentum Vector
+---@field centre Vector
+---@field halfDepth number
+---@field centreDist number
+
+-- Measure a rigid group against a portal as one body: total momentum (Sum of mass*velocity,
+-- so it points where the centre of mass is heading - used for the direction gate), the
+-- combined-bounds centre (for opening alignment), and the group's span along the portal
+-- normal (how far through it is). A member far from the opening just shifts these numbers.
+---@param group Entity[]
+---@param portal linked_portal_door
+---@return wp.GroupSpan
+local function measureGroup( group, portal )
+    local ppos, normal = portal:GetPos(), portal:GetForward()
+    local nMin, nMax = math.huge, -math.huge
+    local minx, miny, minz = math.huge, math.huge, math.huge
+    local maxx, maxy, maxz = -math.huge, -math.huge, -math.huge
+    local totalMass, momentum = 0, Vector()
+    for _, m in ipairs( group ) do
+        local mmins, mmaxs = m:OBBMins(), m:OBBMaxs()
+        for cx = 0, 1 do for cy = 0, 1 do for cz = 0, 1 do
+            local corner = m:LocalToWorld( Vector(
+                cx == 0 and mmins.x or mmaxs.x,
+                cy == 0 and mmins.y or mmaxs.y,
+                cz == 0 and mmins.z or mmaxs.z ) )
+            local proj = (corner - ppos):Dot( normal )
+            if proj < nMin then nMin = proj end
+            if proj > nMax then nMax = proj end
+            if corner.x < minx then minx = corner.x end
+            if corner.y < miny then miny = corner.y end
+            if corner.z < minz then minz = corner.z end
+            if corner.x > maxx then maxx = corner.x end
+            if corner.y > maxy then maxy = corner.y end
+            if corner.z > maxz then maxz = corner.z end
+        end end end
+        local mp = m:GetPhysicsObject()
+        if IsValid( mp ) then
+            local mass = mp:GetMass()
+            totalMass = totalMass + mass
+            momentum:Add( m:GetVelocity() * mass )
+        end
+    end
+    return {
+        mass = totalMass,
+        momentum = momentum,
+        centre = Vector( (minx + maxx) * 0.5, (miny + maxy) * 0.5, (minz + maxz) * 0.5 ),
+        halfDepth = 0.5 * (nMax - nMin),
+        centreDist = 0.5 * (nMin + nMax),
+    }
+end
+
+-- Teleport non-player entities (props/NPCs/ragdolls); players use the predicted
+-- SetupMove path. A welded/roped contraption crosses as one rigid body
+-- (wp.GatherRigidGroup) so its constraints survive.
 ---@param ent Entity
 function ENT:Touch( ent )
     if (not self:GetOpen()) or (not self:GetEnableTeleport()) then return end
@@ -155,9 +217,7 @@ function ENT:Touch( ent )
     local exit = self:GetExit()
     if not IsValid(exit) then return end
 
-    -- Block a group member re-crossing the portal it just emerged from (a same-facing pair
-    -- can fling it back into its exit). Keyed to that exit, so a loop re-entering the entry
-    -- portal still fires instead of falling through.
+    -- Stop a group member bouncing straight back into the portal it just came out of.
     if ent.wpGroupTpAt and ent.wpGroupTpExit == self
         and CurTime() - ent.wpGroupTpAt < TP_REFIRE_COOLDOWN then return end
 
@@ -204,62 +264,20 @@ function ENT:Touch( ent )
                                  + math.abs((maxs.z - mins.z) * ent:GetUp():Dot(normal)) )
         local center = ent:LocalToWorld( ent:OBBCenter() )
         local center_dist = wp.DistanceToPlane( center, self:GetPos(), normal )
-        -- Gate on the opening: the engine trigger over-fires for a thick, rotated portal.
-        local lc = self:WorldToLocal( center )
-        local cmins, cmaxs = self:GetCollisionBounds()
-        local in_face = lc.y >= cmins.y and lc.y <= cmaxs.y and lc.z >= cmins.z and lc.z <= cmaxs.z
-        if in_face and center_dist <= half_depth * (1 - 2 * cvTpFraction:GetFloat()) then
+        if inFace( self, center ) and center_dist <= half_depth * (1 - 2 * cvTpFraction:GetFloat()) then
             applyTeleport( ent, self, exit )
         end
         return
     end
 
-    -- Rigid group: the single-prop gates generalised to the whole contraption - member OBB
-    -- corners give the combined depth and centre, mass-weighted momentum gives direction.
-    local ppos = self:GetPos()
-    local nMin, nMax = math.huge, -math.huge
-    local minx, miny, minz = math.huge, math.huge, math.huge
-    local maxx, maxy, maxz = -math.huge, -math.huge, -math.huge
-    local totalMass, momentum = 0, Vector()
-    for _, m in ipairs( group ) do
-        local mmins, mmaxs = m:OBBMins(), m:OBBMaxs()
-        for cx = 0, 1 do for cy = 0, 1 do for cz = 0, 1 do
-            local corner = m:LocalToWorld( Vector(
-                cx == 0 and mmins.x or mmaxs.x,
-                cy == 0 and mmins.y or mmaxs.y,
-                cz == 0 and mmins.z or mmaxs.z ) )
-            local proj = (corner - ppos):Dot( normal )
-            if proj < nMin then nMin = proj end
-            if proj > nMax then nMax = proj end
-            if corner.x < minx then minx = corner.x end
-            if corner.y < miny then miny = corner.y end
-            if corner.z < minz then minz = corner.z end
-            if corner.x > maxx then maxx = corner.x end
-            if corner.y > maxy then maxy = corner.y end
-            if corner.z > maxz then maxz = corner.z end
-        end end end
-        local mp = m:GetPhysicsObject()
-        if IsValid( mp ) then
-            local mass = mp:GetMass()
-            totalMass = totalMass + mass
-            momentum:Add( m:GetVelocity() * mass )
-        end
-    end
-    if totalMass <= 0 then return end
-
-    -- Only cross while the group is on average approaching the portal.
-    if momentum:Dot( normal ) >= 0 then return end
-
-    -- Gate on the opening (as single-prop): the combined-bounds centre must sit in the door's face.
-    local gc = Vector( (minx + maxx) * 0.5, (miny + maxy) * 0.5, (minz + maxz) * 0.5 )
-    local lc = self:WorldToLocal( gc )
-    local cmins, cmaxs = self:GetCollisionBounds()
-    if not (lc.y >= cmins.y and lc.y <= cmaxs.y and lc.z >= cmins.z and lc.z <= cmaxs.z) then return end
-
-    -- Depth-fraction gate: identical formula to the single-prop case, on the group extent.
-    local groupHalfDepth = 0.5 * (nMax - nMin)
-    local groupCentreDist = 0.5 * (nMin + nMax)
-    if groupCentreDist > groupHalfDepth * (1 - 2 * cvTpFraction:GetFloat()) then return end
+    -- The whole rigid group teleports in one tick; these gates only decide WHEN, all measured
+    -- on the group as one body - so a member far from the opening just shifts them and still
+    -- comes along. In order: heading into the portal, centre within the opening, far enough through.
+    local span = measureGroup( group, self )
+    if span.mass <= 0 then return end
+    if span.momentum:Dot( normal ) >= 0 then return end
+    if not inFace( self, span.centre ) then return end
+    if span.centreDist > span.halfDepth * (1 - 2 * cvTpFraction:GetFloat()) then return end
 
     for _, m in ipairs( group ) do
         applyTeleport( m, self, exit )
