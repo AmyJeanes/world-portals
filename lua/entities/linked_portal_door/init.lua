@@ -141,8 +141,9 @@ local function applyTeleport( ent, portal, exit )
     net.Broadcast()
 end
 
--- Is a world point inside the portal's opening (its y/z face)? Gates out the engine
--- trigger's over-fire for a thick, rotated portal.
+-- Is a world point within the portal's opening (its y/z face)? The Touch trigger covers
+-- a bigger volume than the actual opening on a thick or rotated portal, so we re-check
+-- the point is really inside it.
 ---@param portal linked_portal_door
 ---@param worldPoint Vector
 ---@return boolean

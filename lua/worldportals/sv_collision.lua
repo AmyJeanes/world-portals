@@ -42,17 +42,17 @@ end
 ---@field Type string
 ---@field Entity wp.ConstraintEnt[]
 
--- Walk `seed`'s constraint network over rigid edges (skipping NoCollide) and return every
--- physics-bearing member, so a contraption teleports as one rigid body. Returns nil to veto
+-- Walk `startEnt`'s constraint network over rigid edges (skipping NoCollide) and return every
+-- member with a physics object, so a contraption teleports as one rigid body. Returns nil to veto
 -- the whole move if the group is anchored to the world or map machinery, rides the portal,
 -- or a member fails wp-shouldtp - a partial move would snap it.
----@param seed Entity
+---@param startEnt Entity
 ---@param portal linked_portal_door
 ---@return Entity[]?
-function wp.GatherRigidGroup(seed, portal)
+function wp.GatherRigidGroup(startEnt, portal)
     local group, seen = {}, {}
-    local stack = { seed }
-    seen[seed] = true
+    local stack = { startEnt }
+    seen[startEnt] = true
     while #stack > 0 do
         local e = stack[#stack]
         stack[#stack] = nil
