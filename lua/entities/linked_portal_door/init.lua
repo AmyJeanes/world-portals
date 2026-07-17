@@ -80,7 +80,7 @@ function ENT:KeyValue( key, value )
     end
 end
 
-local TP_REFIRE_COOLDOWN = 0.2   -- group bounce guard; ~cl_renderfollow's RAPID_WINDOW so a grouped rapid loop isn't latched off
+local TP_REFIRE_COOLDOWN = 0.2   -- window to suppress a group bouncing straight back out its exit portal
 
 -- Move one body through the portal: transform pos/vel/angle, snapshot and re-apply a
 -- ragdoll's physics-object poses around SetPos, disarm the entry, fire outputs/hook,
@@ -155,9 +155,11 @@ function ENT:Touch( ent )
     local exit = self:GetExit()
     if not IsValid(exit) then return end
 
-    -- A group teleport stamps every member; the siblings' and the exit's re-Touch this
-    -- window must not re-fire it.
-    if ent.wpGroupTpAt and CurTime() - ent.wpGroupTpAt < TP_REFIRE_COOLDOWN then return end
+    -- Block a group member re-crossing the portal it just emerged from (a same-facing pair
+    -- can fling it back into its exit). Keyed to that exit, so a loop re-entering the entry
+    -- portal still fires instead of falling through.
+    if ent.wpGroupTpAt and ent.wpGroupTpExit == self
+        and CurTime() - ent.wpGroupTpAt < TP_REFIRE_COOLDOWN then return end
 
     if hook.Call("wp-shouldtp", GAMEMODE, self, ent) == false then return end
 
@@ -262,6 +264,7 @@ function ENT:Touch( ent )
     for _, m in ipairs( group ) do
         applyTeleport( m, self, exit )
         m.wpGroupTpAt = CurTime()
+        m.wpGroupTpExit = exit
     end
 end
 
