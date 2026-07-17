@@ -23,6 +23,15 @@ local FACE_OFFSET   = 5
 ---@type table<Entity, wp.GhostRecord>
 wp.ghosts = wp.ghosts or {}   -- [entity] = record
 
+local GROUP_CROSS_GRACE = 0.3   -- seconds a crossing mark survives without a net refresh
+
+-- Rigid-group members the server flagged as past the portal face but not yet teleported. The
+-- per-prop straddle test misses them, so they'd render solid behind the portal; ghost them
+-- instead. Constraint networks are server-only, so the set arrives by net.
+---@type table<Entity, wp.GroupCross>
+wp.groupCrossing = wp.groupCrossing or {}
+setmetatable(wp.groupCrossing, { __mode = "k" })   -- weak keys: drop marks for entities that vanish
+
 -- Lets a consumer that also drives ent's RenderOverride yield to us while we ghost it.
 ---@api
 ---@param ent Entity
@@ -336,11 +345,10 @@ local function makeGhostOverride(rec)
         if rec.isLocalPlayer and bit.band(flags, STUDIO_SHADOWDEPTHTEXTURE) ~= 0 then return end
         if localGhostIsCutaway(rec) then return end
         if ghostDrawVetoed(ent, self, rec.portal, rec.exit) then return end
-        -- Past GHOST_GRACE the throttled (25Hz) scan hasn't removed this ghost yet, but you
-        -- may have moved far enough that the source is no longer force-drawn in the recursion
-        -- - its bones then read as the bind pose and a skeletal ghost copies a T-pose on the
-        -- way out. Stop drawing at the same threshold the scan removes on.
-        if SysTime() - rec.lastSeen > GHOST_GRACE then return end
+        -- A skeletal ghost whose source stops being force-drawn reads bind-pose bones and draws
+        -- a T-pose, so gate it out. Rigid props pose live every draw and don't, so gating them
+        -- just blinks them off on a frame hitch that stretches the scan past the grace.
+        if rec.skeletal and SysTime() - rec.lastSeen > GHOST_GRACE then return end
         -- Pose + exit clip plane are recomputed here, at the draw: the ghost only renders
         -- in the portal RT passes (world-portals draws portals under VIEW_3DSKY), so
         -- computing them at the draw keeps it glued to a fast-moving exit between the 25Hz
@@ -555,6 +563,10 @@ local function endStraddle(rec)
     wp.ghosts[rec.ent] = nil
 end
 
+---@class wp.GroupCross
+---@field portal linked_portal_door
+---@field deadline number
+
 ---@class wp.GhostRecord
 ---@field ent Entity
 ---@field portal linked_portal_door
@@ -749,6 +761,22 @@ local function wouldGhost(portal, ent)
     return hook.Call("wp-shouldghost", GAMEMODE, portal, ent) ~= false
 end
 
+-- Add ent to this frame's ghost set, keeping the nearest portal when more than one wants it
+-- (straddling two portals, or a crossing mark plus a straddle).
+---@param ent Entity
+---@param portal linked_portal_door
+local function keepNearest(ent, portal)
+    local prev = seen[ent]
+    if not prev then
+        seen[ent] = portal
+    else
+        local pc = renderCenter(ent)
+        local dn = (pc - portal:GetPos()):LengthSqr()
+        local dp = (pc - prev:GetPos()):LengthSqr()
+        if dn < dp then seen[ent] = portal end
+    end
+end
+
 hook.Add("Think", "WorldPortals_Ghosts", function()
     if wp.drawing then return end
     if not cvGhosts:GetBool() then
@@ -792,19 +820,23 @@ hook.Add("Think", "WorldPortals_Ghosts", function()
             for _, ent in ipairs(ents.FindInSphere(ppos, r)) do
                 if isCandidate(ent) and not wp.RidesPortal(ent, portal) and straddles(ent, portal)
                     and wouldTeleport(portal, ent) and wouldGhost(portal, ent) then
-                    -- If straddling more than one portal, keep the nearest.
-                    local prev = seen[ent]
-                    if not prev then
-                        seen[ent] = portal
-                    else
-                        local pc = renderCenter(ent)
-                        local prevPos = prev:GetPos()
-                        local dn = (pc - ppos):LengthSqr()
-                        local dp = (pc - prevPos):LengthSqr()
-                        if dn < dp then seen[ent] = portal end
-                    end
+                    keepNearest(ent, portal)
                 end
             end
+        end
+    end
+
+    -- Fold in the server's crossing marks. Their ghost clip planes hide the real body and draw
+    -- the emerged half, so a fully-past member needs no special casing beyond joining the set.
+    for ent, cross in pairs(wp.groupCrossing) do
+        local portal = cross.portal
+        if now >= cross.deadline then
+            wp.groupCrossing[ent] = nil
+        elseif IsValid(ent) and IsValid(portal) and portal:GetOpen()
+            and portal:GetEnableTeleport() and IsValid(portal:GetExit())
+            and isCandidate(ent) and not wp.RidesPortal(ent, portal)
+            and wouldTeleport(portal, ent) and wouldGhost(portal, ent) then
+            keepNearest(ent, portal)
         end
     end
 
@@ -840,6 +872,10 @@ end)
 -- ghost flings through the stale pair for one frame (a half-body flicker). After
 -- A->B the new entry is B (= portal:GetExit()). Idempotent, so resim-safe.
 hook.Add("wp-teleport", "WorldPortals_GhostsTeleport", function(portal, ent)
+    -- Teleported: drop the crossing mark. The member now emerges from the far side, which the
+    -- re-point below and the normal straddle own.
+    if ent then wp.groupCrossing[ent] = nil end
+
     local rec = ent and wp.ghosts[ent]
     if rec and IsValid(portal) then
         local newEntry = portal:GetExit()
@@ -849,6 +885,27 @@ hook.Add("wp-teleport", "WorldPortals_GhostsTeleport", function(portal, ent)
         end
     end
     nextScan = 0
+end)
+
+-- Refresh each flagged member's crossing mark. The scan ghosts them; a mark lapses on the
+-- grace timeout or clears when the member teleports.
+net.Receive("WorldPortals_CrossingGroup", function()
+    local portal = net.ReadEntity()
+    local n = net.ReadUInt(16)
+    local deadline = SysTime() + GROUP_CROSS_GRACE
+    for _ = 1, n do
+        local ent = net.ReadEntity()
+        if IsValid(ent) and IsValid(portal) then
+            local rec = wp.groupCrossing[ent]
+            if rec then
+                rec.portal = portal
+                rec.deadline = deadline
+            else
+                wp.groupCrossing[ent] = { portal = portal, deadline = deadline }
+            end
+        end
+    end
+    nextScan = 0   -- ghost the new members now, not on the next scan tick
 end)
 
 hook.Add("EntityRemoved", "WorldPortals_Ghosts", function(ent)

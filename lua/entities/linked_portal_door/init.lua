@@ -8,6 +8,7 @@ AccessorFunc( ENT, "partnername", "PartnerName" )
 
 util.AddNetworkString("WorldPortals_VRMod_SetAngle")
 util.AddNetworkString("WorldPortals_Teleport")
+util.AddNetworkString("WorldPortals_CrossingGroup")
 
 local cvTpFraction = CreateConVar("worldportals_teleport_fraction", "0.9", FCVAR_ARCHIVE, "Fraction (0-1) of a prop's depth that must pass through a portal before it teleports: 0 = leading edge, 0.5 = centre, 1 = fully through", 0, 1)
 
@@ -103,6 +104,11 @@ local function applyTeleport( ent, portal, exit )
                 store[i]={ent:WorldToLocal(bone:GetPos()),ent:WorldToLocalAngles(bone:GetAngles())}
             end
         end
+    end
+    -- Adjust hoverball target height to match the new relative position after teleporting so it doesn't snap back
+    if ent:GetClass() == "gmod_hoverball" then
+        ---@cast ent gmod_hoverball
+        ent:SetTargetZ( ent:GetTargetZ() + (new_pos.z - ent:GetPos().z) )
     end
     ent:SetPos( new_pos )
     ent:SetAngles( new_angle )
@@ -205,6 +211,79 @@ local function measureGroup( group, portal )
         centreDist = 0.5 * (nMin + nMax),
     }
 end
+
+-- Net the members already past the portal face - the ones that would otherwise render solid
+-- behind it - so the client ghosts them at the exit.
+---@param portal linked_portal_door
+---@param group Entity[]
+---@param normal Vector
+local function broadcastCrossingGroup( portal, group, normal )
+    local ppos = portal:GetPos()
+    local past = {}
+    for _, m in ipairs( group ) do
+        if wp.DistanceToPlane( m:WorldSpaceCenter(), ppos, normal ) <= 0 then
+            past[#past + 1] = m
+        end
+    end
+    if #past == 0 then return end
+
+    net.Start("WorldPortals_CrossingGroup")
+        net.WriteEntity( portal )
+        net.WriteUInt( #past, 16 )
+        for _, m in ipairs( past ) do net.WriteEntity( m ) end
+    net.Broadcast()
+end
+
+-- Is this rigid group mid-crossing - its combined body straddling the opening, part past the
+-- face and part in front? A lone prop, or a group fully in or out, is not.
+---@param group Entity[]
+---@param portal linked_portal_door
+---@return boolean
+local function groupStraddles( group, portal )
+    if #group <= 1 then return false end
+    local span = measureGroup( group, portal )
+    return math.abs( span.centreDist ) < span.halfDepth and inFace( portal, span.centre )
+end
+
+-- Find any mid-crossing group near one portal and broadcast its past members. Only walk from a
+-- mover whose centre is at or past the face - the ones that can need a crossing ghost - so a
+-- contraption still approaching, or props parked in front, is never walked.
+---@param portal linked_portal_door
+local function scanPortalForCrossings( portal )
+    local ppos, normal = portal:GetPos(), portal:GetForward()
+    local r = portal:OBBCenter():Length() + portal:BoundingRadius() + 512
+    local gathered = {}   -- walk each group once; its members all recur in FindInSphere
+    for _, ent in ipairs( ents.FindInSphere( ppos, r ) ) do
+        if wp.IsPhysicalMover( ent ) and not gathered[ent]
+            and wp.DistanceToPlane( ent:WorldSpaceCenter(), ppos, normal ) <= 0 then
+            local group = wp.GatherRigidGroup( ent, portal )
+            if group then
+                for _, m in ipairs( group ) do gathered[m] = true end
+                if groupStraddles( group, portal ) then
+                    broadcastCrossingGroup( portal, group, normal )
+                end
+            end
+        end
+    end
+end
+
+-- Find contraption members that have cleared a portal's opening but not teleported, so
+-- cl_ghosts can ghost them. Geometric rather than off ENT:Touch: a frozen contraption's members
+-- are asleep so Touch never fires, and off Touch the ghost flaps as they wake and sleep.
+-- FindInSphere per portal is the cost here; 10Hz stays well inside the client's 0.3s mark grace.
+local GROUP_SCAN_INTERVAL = 0.1
+local nextGroupScan = 0
+hook.Add("Think", "WorldPortals_CrossingScan", function()
+    local rt = RealTime()
+    if rt < nextGroupScan then return end
+    nextGroupScan = rt + GROUP_SCAN_INTERVAL
+
+    for _, portal in ipairs( wp.portals ) do
+        if IsValid( portal ) and portal:GetOpen() and portal:GetEnableTeleport() and IsValid( portal:GetExit() ) then
+            scanPortalForCrossings( portal )
+        end
+    end
+end)
 
 -- Teleport non-player entities (props/NPCs/ragdolls); players use the predicted
 -- SetupMove path. A welded/roped contraption crosses as one rigid body

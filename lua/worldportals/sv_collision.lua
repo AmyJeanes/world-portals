@@ -42,6 +42,18 @@ end
 ---@field Type string
 ---@field Entity wp.ConstraintEnt[]
 
+-- Cache each walk - a welded contraption straddling a portal holds steady as it crosses, so
+-- re-walking it (a constraint.GetTable + wp-shouldtp per member) every tick and scan is waste.
+-- Cleared when a constraint (phys_*) is added or removed - the only thing that shifts membership.
+---@type table<linked_portal_door, table<Entity, Entity[]|false>>
+local groupCache = {}   -- [portal][member] = the member's group, or false for a cached veto
+hook.Add("OnEntityCreated", "WorldPortals_GroupCache", function(ent)
+    if ent:GetClass():sub(1, 5) == "phys_" then groupCache = {} end
+end)
+hook.Add("EntityRemoved", "WorldPortals_GroupCache", function(ent)
+    if ent:GetClass():sub(1, 5) == "phys_" then groupCache = {} end
+end)
+
 -- Walk `startEnt`'s constraint network over rigid edges (skipping NoCollide) and return every
 -- member with a physics object, so a contraption teleports as one rigid body. Returns nil to veto
 -- the whole move if the group is anchored to the world or map machinery, rides the portal,
@@ -49,7 +61,7 @@ end
 ---@param startEnt Entity
 ---@param portal linked_portal_door
 ---@return Entity[]?
-function wp.GatherRigidGroup(startEnt, portal)
+local function walkRigidGroup(startEnt, portal)
     local group, seen = {}, {}
     local stack = { startEnt }
     seen[startEnt] = true
@@ -87,6 +99,30 @@ function wp.GatherRigidGroup(startEnt, portal)
                 end
             end
         end
+    end
+    return group
+end
+
+-- Serve `startEnt`'s group from the cache when its membership hasn't changed, else walk it and
+-- cache the result under every member, so a later call from any of them hits without re-walking.
+---@param startEnt Entity
+---@param portal linked_portal_door
+---@return Entity[]?
+function wp.GatherRigidGroup(startEnt, portal)
+    local pc = groupCache[portal]
+    if not pc then pc = {}; groupCache[portal] = pc end
+
+    local cached = pc[startEnt]
+    if cached ~= nil then
+        if cached == false then return nil end
+        return cached
+    end
+
+    local group = walkRigidGroup(startEnt, portal)
+    if group then
+        for _, m in ipairs(group) do pc[m] = group end
+    else
+        pc[startEnt] = false
     end
     return group
 end

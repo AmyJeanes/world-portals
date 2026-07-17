@@ -76,3 +76,10 @@ function table.insert(tbl, position, value) end
 -- Add it so a view carrying the legacy field type-checks (wp reads both, and emits `aspect`).
 ---@class ViewData
 ---@field aspectratio number?
+
+-- gmod_hoverball's target height is a per-instance NetworkVar accessor added at spawn, so
+-- glua-api doesn't see it. Declare it so the teleport transform can shift a crossing
+-- hoverball's target Z (else it fights back to its pre-teleport height).
+---@class gmod_hoverball : Entity
+---@field GetTargetZ fun(self: gmod_hoverball): number
+---@field SetTargetZ fun(self: gmod_hoverball, z: number)
