@@ -59,6 +59,10 @@ local function isCandidate(ent)
     -- the ragdoll), so ghosting it draws a phantom over the corpse. The ragdoll
     -- itself still ghosts normally.
     if ent:IsPlayer() and not ent:Alive() then return false end
+    -- A clientside-only prop can't cross a server-side teleport, so ghosting it is pointless.
+    if ent:EntIndex() == -1 and not (ent:IsRagdoll() or ent:IsNPC() or ent:IsPlayer()) then
+        return false
+    end
     if not isGhostableBody(ent) then return false end
     if ent:GetNoDraw() then return false end
     return true
