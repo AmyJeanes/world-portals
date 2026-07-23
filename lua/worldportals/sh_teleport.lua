@@ -15,6 +15,7 @@ local TP_REFIRE_COOLDOWN = 0.25
 ---@param mv CMoveData
 ---@param cmd CUserCmd
 local function predictPlayerTeleport(ply, mv, cmd)
+    if wp.portals[1] == nil then return end
     if CLIENT and ply ~= LocalPlayer() then return end
     if not ply:Alive() then return end
 
@@ -197,19 +198,21 @@ local function predictPlayerTeleport(ply, mv, cmd)
 end
 hook.Add("SetupMove", "WorldPortals_PredictTeleport", predictPlayerTeleport)
 
--- True when `trace` reaches `portal` -- the portal is nearer than the first real obstruction. A door
+-- True when `trace` reaches the portal -- it is nearer than the first real obstruction. A door
 -- filling the portal's own opening (solid serverside only) is not one: wp-tracefilter names a portal's
 -- far-side door, so this portal's near door is its exit's, and hitting only that still reaches it.
----@param portal {Entity: linked_portal_door, Distance: number, HitPos: Vector}
+---@param portalEnt linked_portal_door
+---@param portalDist number
 ---@param trace TraceResult
 ---@return boolean
-local function portalReached(portal, trace)
-    if portal.Distance < trace.HitPos:Distance(trace.StartPos) then return true end
-    local exit = portal.Entity:GetExit()
+local function portalReached(portalEnt, portalDist, trace)
+    if portalDist < trace.HitPos:Distance(trace.StartPos) then return true end
+    local exit = portalEnt:GetExit()
     return IsValid(exit) and trace.Entity == hook.Call("wp-tracefilter", GAMEMODE, exit)
 end
 
 hook.Add("EntityFireBullets", "WorldPortals_Bullets", function(ent,data)
+    if wp.portals[1] == nil then return end
     local src, dir, distance = data.Src, data.Dir, data.Distance
     if not src then return end
     if not dir then return end
@@ -223,17 +226,18 @@ hook.Add("EntityFireBullets", "WorldPortals_Bullets", function(ent,data)
     })
 
     local portal = wp.GetFirstPortalHit(src, dir)
+    local portalEnt = portal.Entity
 
-    if IsValid(portal.Entity) and portalReached(portal, trace) then
-        local localHitPos = portal.Entity:WorldToLocal(portal.HitPos)
-        local mins, maxs = portal.Entity:GetCollisionBounds()
+    if IsValid(portalEnt) and portalReached(portalEnt, portal.Distance, trace) then
+        local localHitPos = portalEnt:WorldToLocal(portal.HitPos)
+        local mins, maxs = portalEnt:GetCollisionBounds()
         if localHitPos.y > mins.y and localHitPos.y < maxs.y
         and localHitPos.z > mins.z and localHitPos.z < maxs.z
-        and hook.Call("wp-trace", GAMEMODE, portal.Entity)~=false then
-            data.Src=wp.TransformPortalPos( portal.HitPos, portal.Entity, portal.Entity:GetExit() )
-            data.Dir=wp.TransformPortalAngle( dir:Angle(), portal.Entity, portal.Entity:GetExit() ):Forward()
+        and hook.Call("wp-trace", GAMEMODE, portalEnt)~=false then
+            data.Src=wp.TransformPortalPos( portal.HitPos, portalEnt, portalEnt:GetExit() )
+            data.Dir=wp.TransformPortalAngle( dir:Angle(), portalEnt, portalEnt:GetExit() ):Forward()
 
-            local traceFilter = hook.Call("wp-tracefilter", GAMEMODE, portal.Entity)
+            local traceFilter = hook.Call("wp-tracefilter", GAMEMODE, portalEnt)
             if IsValid(traceFilter) then
                 data.IgnoreEntity = traceFilter
             end
@@ -254,17 +258,19 @@ end
 ---@return TraceResult
 function WorldPortals_TraceLine(data)
     local trace = util.RealTraceLine(data)
+    if wp.portals[1] == nil then return trace end
     local portal = wp.GetFirstPortalHit(trace.StartPos, trace.Normal)
+    local portalEnt = portal.Entity
 
-    if IsValid(portal.Entity) and portalReached(portal, trace) then
-        local localHitPos = portal.Entity:WorldToLocal(portal.HitPos)
-        local mins, maxs = portal.Entity:GetCollisionBounds()
+    if IsValid(portalEnt) and portalReached(portalEnt, portal.Distance, trace) then
+        local localHitPos = portalEnt:WorldToLocal(portal.HitPos)
+        local mins, maxs = portalEnt:GetCollisionBounds()
 
         if localHitPos.y > mins.y and localHitPos.y < maxs.y
         and localHitPos.z > mins.z and localHitPos.z < maxs.z
-        and hook.Call("wp-trace", GAMEMODE, portal.Entity)~=false then
-            local dir = wp.TransformPortalAngle( trace.Normal:Angle(), portal.Entity, portal.Entity:GetExit() ):Forward()
-            local startPos = wp.TransformPortalPos( portal.HitPos, portal.Entity, portal.Entity:GetExit() )
+        and hook.Call("wp-trace", GAMEMODE, portalEnt)~=false then
+            local dir = wp.TransformPortalAngle( trace.Normal:Angle(), portalEnt, portalEnt:GetExit() ):Forward()
+            local startPos = wp.TransformPortalPos( portal.HitPos, portalEnt, portalEnt:GetExit() )
 
             local dataStart, dataEnd = data.start, data.endpos
             if not dataStart or not dataEnd then return trace end
@@ -275,7 +281,7 @@ function WorldPortals_TraceLine(data)
             endPos:Mul(length + 32 - usedLength)
             endPos:Add(startPos)
             
-            local hookFilter = hook.Call("wp-tracefilter", GAMEMODE, portal.Entity)
+            local hookFilter = hook.Call("wp-tracefilter", GAMEMODE, portalEnt)
             local newFilter = data.filter
             if IsValid(hookFilter) then
                 if newFilter == nil then

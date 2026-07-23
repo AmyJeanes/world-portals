@@ -179,31 +179,41 @@ end
 ---@api
 ---@param source Vector
 ---@param direction Vector
+---@return {Entity: linked_portal_door?, Distance: number, HitPos: Vector}
 function wp.GetFirstPortalHit(source, direction)
-    local portal = {
-        Entity = nil,
-        Distance = 0,
-        HitPos = Vector(0,0,0)
-    }
+    -- Runs inside the util.TraceLine override - every trace in the game pays
+    -- whatever this allocates, so keep it lean.
+    local bestEnt, bestDist, bestT
     for _, v in ipairs(wp.portals) do
         if v.GetExit and IsValid(v:GetExit()) then
-            local hitPos = util.IntersectRayWithPlane(source, direction, v:GetPos(), v:GetForward())
-
-            if isvector(hitPos) and direction:Dot( v:GetForward() ) < 0 then
-                local dist = source:Distance(v:GetPos())
-
-                if portal.Distance == 0 then
-                    portal.Distance = dist
-                end
-
-                if dist <= portal.Distance then
-                    portal.Entity = v
-                    portal.Distance = dist
-                    portal.HitPos = hitPos
+            local fwd = v:GetForward()
+            local dot = direction:Dot(fwd)
+            if dot < 0 then
+                local pos = v:GetPos()
+                local t = ((pos.x - source.x) * fwd.x
+                    + (pos.y - source.y) * fwd.y
+                    + (pos.z - source.z) * fwd.z) / dot
+                if t >= 0 then
+                    local dist = source:Distance(pos)
+                    if bestDist == nil or dist <= bestDist then
+                        bestEnt, bestDist, bestT = v, dist, t
+                    end
                 end
             end
         end
     end
 
-    return portal
+    local hitPos
+    if bestEnt then
+        hitPos = Vector(source.x + direction.x * bestT,
+            source.y + direction.y * bestT,
+            source.z + direction.z * bestT)
+    else
+        hitPos = Vector(0, 0, 0)
+    end
+    return {
+        Entity = bestEnt,
+        Distance = bestDist or 0,
+        HitPos = hitPos
+    }
 end
