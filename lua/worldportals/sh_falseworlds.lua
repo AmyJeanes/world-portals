@@ -214,7 +214,7 @@ function wp.renderfalseworld( texture, portal, plyOrigin, plyAngle, width, heigh
         render.Clear( 0, 0, 0, 0, true, true )
         render.SetViewPort( 0, 0, ScrW(), ScrH() )
 
-        local oldFog = render.GetFogMode() --[[@as MATERIAL_FOG]]
+        local oldFog = render.GetFogMode()
         render.SuppressEngineLighting( true )
         render.FogMode( MATERIAL_FOG_NONE )
 

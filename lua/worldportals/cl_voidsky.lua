@@ -31,8 +31,8 @@ local function getSkyRT( w, h )
         -- the real scene's depth too, and the far-away backdrop would then paint over everything. One
         -- cached RT per screen size - they can't be resized, and reusing a name across sizes leaks.
         rt = GetRenderTargetEx( "wp_voidsky3d_" .. tag, w, h, RT_SIZE_NO_CHANGE, MATERIAL_RT_DEPTH_SEPARATE,
-            bit.bor( TEXTUREFLAGS_TRILINEAR, TEXTUREFLAGS_CLAMPS, TEXTUREFLAGS_CLAMPT, TEXTUREFLAGS_NOMIP ) --[[@as TEXTUREFLAGS]],
-            0 --[[@as CREATERENDERTARGETFLAGS]], IMAGE_FORMAT_RGBA8888 )
+            bit.bor( TEXTUREFLAGS_TRILINEAR, TEXTUREFLAGS_CLAMPS, TEXTUREFLAGS_CLAMPT, TEXTUREFLAGS_NOMIP ),
+            0, IMAGE_FORMAT_RGBA8888 )
         skyRTs[tag] = rt
     end
     return rt
