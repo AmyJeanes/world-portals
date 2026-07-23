@@ -747,6 +747,22 @@ hook.Add("EntityRemoved", "WorldPortals_GhostReach", function(ent)
     if reach >= maxReach then refreshMaxReach() end
 end)
 
+-- The discovery sphere is padded by the GLOBAL max reach, so one huge entity
+-- widens it for every scan; re-check each candidate against its OWN reach -
+-- an origin farther away than its own bounds can span cannot touch the opening.
+---@param ent Entity
+---@param ppos Vector
+---@param preach number
+local function withinOwnReach(ent, ppos, preach)
+    local ereach = reachByEnt[ent]
+    if not ereach then
+        ereach = reachOf(ent)
+        reachByEnt[ent] = ereach
+    end
+    local range = preach + ereach
+    return ppos:DistToSqr(ent:GetPos()) <= range * range
+end
+
 -- Only ghost where the prop would actually teleport. wp-shouldtp is the right
 -- "portal off" signal because it's position-independent (networked state), unlike
 -- wp-shouldrender which is view-dependent and would vanish the ghost when you step
@@ -820,9 +836,11 @@ hook.Add("Think", "WorldPortals_Ghosts", function()
         if IsValid(portal) and portal.GetOpen and portal:GetOpen()
             and portal:GetEnableTeleport() and IsValid(portal:GetExit()) then
             local ppos = portal:GetPos()
-            local r = reachOf(portal) + math.max(maxReach, REACH_FLOOR)
+            local preach = reachOf(portal)
+            local r = preach + math.max(maxReach, REACH_FLOOR)
             for _, ent in ipairs(ents.FindInSphere(ppos, r)) do
-                if isCandidate(ent) and not wp.RidesPortal(ent, portal) and straddles(ent, portal)
+                if isCandidate(ent) and not wp.RidesPortal(ent, portal)
+                    and withinOwnReach(ent, ppos, preach) and straddles(ent, portal)
                     and wouldTeleport(portal, ent) and wouldGhost(portal, ent) then
                     keepNearest(ent, portal)
                 end
