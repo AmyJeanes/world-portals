@@ -471,7 +471,7 @@ local function resolveWeaponWorldModel(w)
     entMeta.SetSkin = function(s, k) if s == w then skin = k return end return oSkin(s, k) end
     ---@param s Entity
     entMeta.DrawModel = function(s, ...) if s == w then return end return oDraw(s, ...) end
-    -- the field read drops the self param a ':' declaration implies
+    -- glua_ls 1.1.1: the field read drops the self param a ':' declaration implies.
     pcall(w.DrawWorldModel --[[@as fun(self: Weapon, flags: number?)]], w)
     entMeta.SetModel, entMeta.SetSkin, entMeta.DrawModel = oSet, oSkin, oDraw
     return model or w:GetModel(), skin or w:GetSkin()

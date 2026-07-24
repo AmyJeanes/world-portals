@@ -110,7 +110,7 @@ end
 ---@return Entity[]?
 function wp.GatherRigidGroup(startEnt, portal)
     if not groupCache[portal] then groupCache[portal] = {} end
-    -- Restated: read back out of groupCache, the value type collapses to the false arm.
+    -- glua_ls 1.1.1: reading back out of groupCache collapses the value type to the false arm.
     ---@type table<Entity, Entity[]|false>
     local pc = groupCache[portal]
 
