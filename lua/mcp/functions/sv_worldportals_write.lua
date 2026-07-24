@@ -202,6 +202,8 @@ local RENDER_PROPS = {
     false_world = { type = "string", description = "Registered false-world name to show instead of linking (empty = none)." },
 }
 
+---@param ... table
+---@return table
 local function mergeProps(...)
     local out = {}
     for _, block in ipairs({ ... }) do

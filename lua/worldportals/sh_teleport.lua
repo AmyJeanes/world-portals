@@ -211,12 +211,16 @@ local function portalReached(portalEnt, portalDist, trace)
     return IsValid(exit) and trace.Entity == hook.Call("wp-tracefilter", GAMEMODE, exit)
 end
 
+-- glua_ls 1.1.1: the hook overload already types these, but only as inferred.
+---@param ent Entity
+---@param data Bullet
 hook.Add("EntityFireBullets", "WorldPortals_Bullets", function(ent,data)
     if wp.portals[1] == nil then return end
     local src, dir, distance = data.Src, data.Dir, data.Distance
     if not src then return end
     if not dir then return end
     if not distance then return end
+    ---@type Entity[]
     local bulletFilter = {ent}
     if data.IgnoreEntity then table.insert(bulletFilter, data.IgnoreEntity) end
     local trace = util.RealTraceLine({

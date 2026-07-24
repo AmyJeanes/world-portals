@@ -20,6 +20,20 @@ wp.matViewUV = CreateMaterial("WorldPortals_ViewUV", "UnlitGeneric", {
 -- Reused per-eye texture-coord remap matrix for painting the exit view (see cl_init.lua / matViewUV).
 wp.uvRemapMatrix = Matrix()
 
+-- Active view state, swapped in around each RenderView and nil outside one.
+---@class wp
+---@field vieworigin Vector?
+---@field viewangle Angle?
+---@field viewfov number?
+---@field viewwidth number?
+---@field viewheight number?
+---@field viewportX number?
+---@field viewportY number?
+---@field viewportW number?
+---@field viewportH number?
+---@field viewportRTW number?
+---@field viewportRTH number?
+
 wp.drawing = true --default portals to not draw
 wp.rendermode = false
 local THICK_PORTAL_POS = Vector()
@@ -689,10 +703,14 @@ local framePortalRenderByDepth = {}
 
 -- Debug-overlay log of every render this frame, in order. Slots reused
 -- across frames; gated on `recordRenders` so overlay-off pays nothing.
+-- glua_ls 1.1.1: infers `{ T }` from the appends, then fails to unify it with `T[]`.
+---@diagnostic disable-next-line: assign-type-mismatch
 ---@type wp_rendered_record[]
 local frameRenderedList = {}
 local frameRenderedCount = 0
 -- Same shape, for portals culled by ancestor-overlap (yellow in overlay).
+-- glua_ls 1.1.1: as above.
+---@diagnostic disable-next-line: assign-type-mismatch
 ---@type wp_render_record[]
 local frameCulledList = {}
 local frameCulledCount = 0
@@ -889,7 +907,7 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
             if recordRenders then
                 local slot = frameRenderedList[frameRenderedCount + 1]
                 if not slot then
-                    slot = {camOrigin = Vector(), camAngle = Angle(), cumPoly = {}}
+                    slot = {camOrigin = Vector(), camAngle = Angle(), cumPoly = {}} --[[@as wp_rendered_record]]
                     frameRenderedList[frameRenderedCount + 1] = slot
                 end
                 slot.portal = portal

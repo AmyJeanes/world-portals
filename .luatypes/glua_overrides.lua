@@ -1,16 +1,9 @@
 ---@meta
 -- Local annotation overrides for gaps in the provisioned GLua annotations.
 
--- aspectratio is the engine's still-honored legacy alias of aspect; the annotations omit it.
--- Fixed on the wiki (2026-07-22); removable once the annotations re-scrape it.
----@class (partial) ViewData
----@field aspectratio number?
-
--- The engine takes a list of lights here, not the single LocalLight the
--- annotation says. table[] because LocalLight wrongly requires falloff fields;
--- that half is fixed on the wiki (2026-07-22), the list half needs a scraper fix.
----@diagnostic disable-next-line: duplicate-set-field
----@param lights? table[]
+-- The engine takes a list of lights here, not the single LocalLight the annotation
+-- says - the wiki documents "up to 4 tables", so this needs an upstream scraper fix.
+---@param lights? LocalLight[]
 function render.SetLocalModelLights(lights) end
 
 -- The engine's original TraceLine, saved before wp's detour replaces it.

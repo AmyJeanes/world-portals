@@ -9,6 +9,8 @@ wp_.DEFAULT_WIDTH = 100
 wp_.DEFAULT_HEIGHT = 100
 
 ---@param ent Entity
+---@return boolean
+---@return_cast ent linked_portal_door
 function wp_.IsPortal(ent)
     return IsValid(ent) and ent:GetClass() == PORTAL_CLASS
 end
@@ -23,8 +25,6 @@ function wp_.ResolvePortal(entindex)
     if not wp_.IsPortal(ent) then
         return nil, "no linked_portal_door at entindex " .. entindex
     end
-    -- IsPortal guarantees the class
-    ---@cast ent linked_portal_door
     return ent
 end
 

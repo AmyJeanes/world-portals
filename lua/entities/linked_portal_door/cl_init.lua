@@ -194,7 +194,7 @@ net.Receive("WorldPortals_VRMod_SetAngle", function()
 end)
 
 net.Receive("WorldPortals_Teleport", function()
-    local portal = net.ReadEntity()
+    local portal = net.ReadEntity() --[[@as linked_portal_door]]
     local ent = net.ReadEntity()
     local new_pos = net.ReadVector()
     local new_angle = net.ReadAngle()

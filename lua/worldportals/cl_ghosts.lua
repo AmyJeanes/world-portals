@@ -112,6 +112,7 @@ local sCZ = {0, 0, 0, 0, 0, 0, 0, 0}
 -- Does ent's bounds cross the portal plane within the opening? Conservative - a
 -- near-miss just makes a fully-clipped, invisible ghost.
 ---@param ent Entity
+-- glua_ls 1.1.1: the hook overload already types these, but only as inferred.
 ---@param portal linked_portal_door
 local function straddles(ent, portal)
     local pos = portal:GetPos()
@@ -143,7 +144,8 @@ local function straddles(ent, portal)
             for sz = 0, 1 do
                 local lz = sz == 0 and mn.z or mx.z
                 i = i + 1
-                local l = portal:WorldToLocal(LocalToWorld(Vector(lx, ly, lz), ANGLE_ZERO, rpos, rang))
+                local w = LocalToWorld(Vector(lx, ly, lz), ANGLE_ZERO, rpos, rang)
+                local l = portal:WorldToLocal(w)
                 sCX[i], sCY[i], sCZ[i] = l.x, l.y, l.z
             end
         end
@@ -453,7 +455,8 @@ end
 -- draw with SetModel/SetSkin/DrawModel intercepted (scoped to this weapon, nothing
 -- rendered) to capture the model it would set; fall back to GetModel if it sets none.
 local entMeta = assert(FindMetaTable("Entity"))
----@param w Entity
+---@param w Weapon
+---@return string model, number skin
 local function resolveWeaponWorldModel(w)
     if not isfunction(w.DrawWorldModel) then
         return w:GetModel(), w:GetSkin()
@@ -468,7 +471,8 @@ local function resolveWeaponWorldModel(w)
     entMeta.SetSkin = function(s, k) if s == w then skin = k return end return oSkin(s, k) end
     ---@param s Entity
     entMeta.DrawModel = function(s, ...) if s == w then return end return oDraw(s, ...) end
-    pcall(w.DrawWorldModel, w)
+    -- the field read drops the self param a ':' declaration implies
+    pcall(w.DrawWorldModel --[[@as fun(self: Weapon, flags: number?)]], w)
     entMeta.SetModel, entMeta.SetSkin, entMeta.DrawModel = oSet, oSkin, oDraw
     return model or w:GetModel(), skin or w:GetSkin()
 end
@@ -481,6 +485,8 @@ local function updateWeapon(rec)
     local ent = rec.ent
     if not (ent:IsNPC() or ent:IsPlayer()) then return end
 
+    -- glua_ls 1.1.1: @return_cast doesn't narrow through an 'or' of two predicates.
+    ---@cast ent NPC|Player
     local w = ent:GetActiveWeapon()
     if not IsValid(w) then
         clearWeapon(rec)
@@ -592,7 +598,7 @@ end
 ---@field entryD number
 ---@field exitD number
 ---@field sig table
----@field originalOverride function
+---@field originalOverride function?
 ---@field hasDrawn boolean?
 ---@field savedRenderOverride function?
 ---@field shadowReady boolean?
@@ -627,6 +633,8 @@ local function startStraddle(ent, portal)
     -- ERRORS on a ClientsideModel, so override the getter instead (the proxy calls
     -- this Lua method). Players only.
     if ent:IsPlayer() then
+        -- glua_ls 1.1.1: @return_cast narrowing is lost inside a closure, so restate it.
+        ---@cast ent Player
         ghost.GetPlayerColor = function() return ent:GetPlayerColor() end
     end
 
@@ -877,6 +885,7 @@ hook.Add("Think", "WorldPortals_Ghosts", function()
         end
     end
 
+    ---@type wp.GhostRecord[]?
     local expired
     for ent, rec in pairs(wp.ghosts) do
         if not IsValid(ent) or not IsValid(rec.portal) or not IsValid(rec.ghost) then
@@ -896,6 +905,8 @@ end)
 -- discovery scan can't see the new position until next frame, so without this the
 -- ghost flings through the stale pair for one frame (a half-body flicker). After
 -- A->B the new entry is B (= portal:GetExit()). Idempotent, so resim-safe.
+---@param portal linked_portal_door
+---@param ent Entity
 hook.Add("wp-teleport", "WorldPortals_GhostsTeleport", function(portal, ent)
     -- Teleported: drop the crossing mark. The member now emerges from the far side, which the
     -- re-point below and the normal straddle own.
@@ -938,6 +949,7 @@ hook.Add("EntityRemoved", "WorldPortals_Ghosts", function(ent)
     if direct then endStraddle(direct) end
 
     -- A removed portal/exit/ghost invalidates any record referencing it.
+    ---@type wp.GhostRecord[]?
     local victims
     for e, rec in pairs(wp.ghosts) do
         if e ~= ent and (rec.portal == ent or rec.exit == ent or rec.ghost == ent) then

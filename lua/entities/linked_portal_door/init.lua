@@ -33,12 +33,7 @@ function ENT:KeyValue( key, value )
 
     elseif ( key == "angles" ) then
         local args = value:Split( " " )
-
-        for k, arg in pairs( args ) do
-            args[k] = tonumber(arg)
-        end
-
-        self:SetAngles( Angle( unpack(args) ) )
+        self:SetAngles( Angle( tonumber(args[1]) or 0, tonumber(args[2]) or 0, tonumber(args[3]) or 0 ) )
 
     elseif ( key == "falseworld" ) then
         self:SetFalseWorld( value )
@@ -48,17 +43,11 @@ function ENT:KeyValue( key, value )
 
     elseif ( key == "custommodelpos" ) then
         local args = value:Split( " " )
-        for k, arg in pairs( args ) do
-            args[k] = tonumber(arg)
-        end
-        self:SetCustomModelPosOffset( Vector( unpack(args) ) )
+        self:SetCustomModelPosOffset( Vector( tonumber(args[1]) or 0, tonumber(args[2]) or 0, tonumber(args[3]) or 0 ) )
 
     elseif ( key == "custommodelang" ) then
         local args = value:Split( " " )
-        for k, arg in pairs( args ) do
-            args[k] = tonumber(arg)
-        end
-        self:SetCustomModelAngOffset( Angle( unpack(args) ) )
+        self:SetCustomModelAngOffset( Angle( tonumber(args[1]) or 0, tonumber(args[2]) or 0, tonumber(args[3]) or 0 ) )
 
     elseif ( key == "EnableTeleport" ) then
         self:SetEnableTeleport( tobool(value) )
@@ -94,14 +83,14 @@ local function applyTeleport( ent, portal, exit )
     local new_velocity = wp.TransformPortalVector( ent:GetVelocity(), portal, exit )
     local new_angle = wp.TransformPortalAngle( ent:GetAngles(), portal, exit )
 
-    ---@type table<integer, {[1]: Vector, [2]: Angle}>?
+    ---@type table<integer, {pos: Vector, ang: Angle}>?
     local store
     if ent:IsRagdoll() then
         store={}
         for i=0,ent:GetPhysicsObjectCount() do
             local bone=ent:GetPhysicsObjectNum(i)
             if IsValid(bone) then
-                store[i]={ent:WorldToLocal(bone:GetPos()),ent:WorldToLocalAngles(bone:GetAngles())}
+                store[i]={pos=ent:WorldToLocal(bone:GetPos()),ang=ent:WorldToLocalAngles(bone:GetAngles())}
             end
         end
     end
@@ -128,8 +117,8 @@ local function applyTeleport( ent, portal, exit )
         for i=0,ent:GetPhysicsObjectCount() do
             local bone=ent:GetPhysicsObjectNum(i)
             if IsValid(bone) and store[i] then
-                bone:SetPos(ent:LocalToWorld(store[i][1]))
-                bone:SetAngles(ent:LocalToWorldAngles(store[i][2]))
+                bone:SetPos(ent:LocalToWorld(store[i].pos))
+                bone:SetAngles(ent:LocalToWorldAngles(store[i].ang))
                 bone:SetVelocityInstantaneous(new_velocity)
                 bone:Wake()
             end

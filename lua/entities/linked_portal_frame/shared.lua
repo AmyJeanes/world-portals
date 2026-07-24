@@ -1,3 +1,6 @@
+---@class linked_portal_frame : Entity
+---@field Portal linked_portal_door set by the portal that spawns the frame; the frame follows it
+
 ENT.Type      = "anim"
 ENT.Spawnable = false
 ENT.AdminOnly = false

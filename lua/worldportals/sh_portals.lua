@@ -1,11 +1,17 @@
 -- Portals
 
----@type linked_portal_door[]
+---@class wp
+---@field portals linked_portal_door[] live portals, rebuilt fresh on change
+
 wp.portals = wp.portals or {}
 
+---@type table<linked_portal_door, boolean>
 local registered = {}
 
 local function rebuild()
+    -- glua_ls 1.1.1: infers `{ T }` from the appends, then fails to unify it with `T[]`.
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    ---@type linked_portal_door[]
     local list = {}
     for portal in pairs(registered) do
         if IsValid(portal) then list[#list + 1] = portal end

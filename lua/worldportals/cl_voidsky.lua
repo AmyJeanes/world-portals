@@ -40,9 +40,6 @@ end
 
 -- zfar is the engine's longest view distance (MAX_TRACE_LENGTH) so the whole miniature scene fits.
 -- viewid 1 (VIEW_3DSKY) matches the portal renders and dodges a halo/visibility glitch viewid 0 brings back.
--- The engine treats every ViewData field as optional; the missing ones are set before each render.
--- Fixed on the wiki (2026-07-22); removable once the annotations re-scrape it.
----@diagnostic disable-next-line: missing-fields
 local skyView = {
     x = 0, y = 0,
     drawviewmodel = false, drawhud = false, drawmonitors = false,
@@ -157,7 +154,7 @@ local SKY_FACE_DEFS = {
 local VOIDSKY_INSET = 510 / 512
 local skyFaces, skyName, skyCvar
 local function buildSkyFaces()
-    skyCvar = skyCvar or GetConVar("sv_skyname")
+    skyCvar = skyCvar or assert(GetConVar("sv_skyname"))
     local name = skyCvar:GetString():lower()
     if name == skyName and skyFaces then return end
     skyName = name

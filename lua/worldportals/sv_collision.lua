@@ -109,9 +109,9 @@ end
 ---@param portal linked_portal_door
 ---@return Entity[]?
 function wp.GatherRigidGroup(startEnt, portal)
-    -- The analyzer sees the false values stored below as boolean, missing the false-only union.
-    ---@diagnostic disable-next-line: assign-type-mismatch
     if not groupCache[portal] then groupCache[portal] = {} end
+    -- Restated: read back out of groupCache, the value type collapses to the false arm.
+    ---@type table<Entity, Entity[]|false>
     local pc = groupCache[portal]
 
     local cached = pc[startEnt]
@@ -190,6 +190,8 @@ function wp.ArmNoCollide(portal, ent)
         wp.nocollide[ent] = recs
     end
 
+    -- glua_ls 1.1.1: infers `{ T }` from the appends, then fails to unify it with `T[]`.
+    ---@diagnostic disable-next-line: assign-type-mismatch
     ---@type Entity[]
     local cons = {}
     for _, s in ipairs(gatherPhaseSolids(portal, ent)) do
@@ -238,6 +240,7 @@ end
 -- removed) so the parent goes solid again for those props.
 ---@param portal Entity
 function wp.DisarmPortal(portal)
+    ---@type Entity[]?
     local victims
     for ent, recs in pairs(wp.nocollide) do
         if recs[portal] then

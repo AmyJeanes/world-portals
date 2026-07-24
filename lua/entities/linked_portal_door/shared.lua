@@ -46,9 +46,32 @@
 ---@field WPTexture1Height number
 ---@field RenderMin Vector
 ---@field RenderMax Vector
----@field GetExit fun(self: linked_portal_door): linked_portal_door
 ---@field SetTexture fun(self: linked_portal_door, texture: ITexture)
 ---@field GetTexture fun(self: linked_portal_door): ITexture
+---@field SetPartnerName fun(self: linked_portal_door, name: string)
+---@field GetPartnerName fun(self: linked_portal_door): string
+---Narrows the notify callback's entity to this class; the base annotation only promises an Entity.
+---@field NetworkVarNotify fun(self: linked_portal_door, name: string, callback: fun(ent: linked_portal_door, name: string, old: any, new: any))
+---The analyzer resolves the SetupDataTables accessors but not what they return, so declare
+---the getters here (Exit narrowed to this class); their setters stay analyzer-derived.
+---@field GetExit fun(self: linked_portal_door): linked_portal_door
+---@field GetWidth fun(self: linked_portal_door): number
+---@field GetHeight fun(self: linked_portal_door): number
+---@field GetDisappearDist fun(self: linked_portal_door): number
+---@field GetThickness fun(self: linked_portal_door): number
+---@field GetTransparency fun(self: linked_portal_door): number
+---@field GetZFar fun(self: linked_portal_door): number
+---@field GetCustomLink fun(self: linked_portal_door): string
+---@field GetFalseWorld fun(self: linked_portal_door): string
+---@field GetCustomModel fun(self: linked_portal_door): string
+---@field GetInverted fun(self: linked_portal_door): boolean
+---@field GetOpen fun(self: linked_portal_door): boolean
+---@field GetEnableTeleport fun(self: linked_portal_door): boolean
+---@field GetEnableCollision fun(self: linked_portal_door): boolean
+---@field GetExitPosOffset fun(self: linked_portal_door): Vector
+---@field GetExitAngOffset fun(self: linked_portal_door): Angle
+---@field GetCustomModelPosOffset fun(self: linked_portal_door): Vector
+---@field GetCustomModelAngOffset fun(self: linked_portal_door): Angle
 
 ENT.Type                = "anim"
 ENT.RenderGroup         = RENDERGROUP_BOTH -- fixes translucent stuff rendering behind the portal

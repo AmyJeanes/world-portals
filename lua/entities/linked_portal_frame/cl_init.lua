@@ -27,6 +27,8 @@ hook.Add("PostDrawTranslucentRenderables", "WorldPortals_DebugCollision", functi
     for _, fr in ipairs(ents.FindByClass("linked_portal_frame")) do
         local portal = fr:GetNWEntity("WPPortal")
         if IsValid(fr) and IsValid(portal) then
+            -- Only the portal that spawns the frame ever sets WPPortal.
+            ---@cast portal linked_portal_door
             local slabs = fr:FrameSlabs(portal:GetWidth(), portal:GetHeight(), portal:GetThickness())
             if slabs then
                 local pos, ang = fr:GetPos(), fr:GetAngles()

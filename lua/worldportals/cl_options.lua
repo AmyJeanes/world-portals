@@ -3,6 +3,9 @@
 hook.Add("PopulateToolMenu", "WorldPortals_PopulateToolMenu", function()
     ---@diagnostic disable-next-line: deprecated
     spawnmenu.AddToolMenuOption("Options", "World Portals", "WorldPortals_Options", "Settings", "", "", function(panel)
+        -- The menu hands us a ControlPanel, not the bare Panel the stub's annotation claims.
+        -- Fixed on the wiki (2026-07-24); removable once the annotations re-scrape it.
+        ---@cast panel ControlPanel
         panel:ClearControls()
 
         local title = vgui.Create("DLabel")
@@ -41,7 +44,7 @@ hook.Add("PopulateToolMenu", "WorldPortals_PopulateToolMenu", function()
                 panel:InvalidateLayout(true)
             end
         end
-        updateRecurseWarn(GetConVar("worldportals_recurse_depth"):GetInt())
+        updateRecurseWarn(assert(GetConVar("worldportals_recurse_depth")):GetInt())
         recursion.OnValueChanged = function(_, value)
             updateRecurseWarn(value)
         end
