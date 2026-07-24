@@ -105,4 +105,4 @@ jobs:
         if: steps.guard.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.TOKEN }}
-        run: gh workflow run ci.yml --repo AmyJeanes/Doors --ref main -f publish=true -f addon=beta
+        run: gh workflow run ci.yml --repo AmyJeanes/Doors --ref main -f publish=true
