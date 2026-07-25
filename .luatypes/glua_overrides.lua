@@ -18,3 +18,7 @@ function util.RealTraceLine(traceConfig) end
 ---@class gmod_hoverball : Entity
 ---@field GetTargetZ fun(self: gmod_hoverball): number
 ---@field SetTargetZ fun(self: gmod_hoverball, z: number)
+
+-- The map's 3D skybox camera: a stock engine entity with no annotation entry, so
+-- FindByClass on it would otherwise auto-create the class and warn.
+---@class sky_camera : Entity
