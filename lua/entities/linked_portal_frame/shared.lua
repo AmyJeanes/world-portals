@@ -1,10 +1,11 @@
 ---@class linked_portal_frame : Entity
 ---@field Portal linked_portal_door set by the portal that spawns the frame; the frame follows it
 
-ENT.Type      = "anim"
-ENT.Spawnable = false
-ENT.AdminOnly = false
-ENT.PrintName = "Portal Collision Frame"
+ENT.Type           = "anim"
+ENT.Spawnable      = false
+ENT.AdminOnly      = false
+ENT.PrintName      = "Portal Collision Frame"
+ENT.DoNotDuplicate = true
 
 -- A collision-only perimeter frame for a linked_portal_door opening: a 4-slab
 -- multiconvex hull (top/bottom/left/right) leaving the centre hole and the transit
