@@ -486,8 +486,6 @@ local function updateWeapon(rec)
     local ent = rec.ent
     if not (ent:IsNPC() or ent:IsPlayer()) then return end
 
-    -- glua_ls 1.1.1: @return_cast doesn't narrow through an 'or' of two predicates.
-    ---@cast ent NPC|Player
     local w = ent:GetActiveWeapon()
     if not IsValid(w) then
         clearWeapon(rec)
