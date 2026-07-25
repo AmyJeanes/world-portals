@@ -9,7 +9,8 @@
         "library": [
             "./.tools/glua-api",
             "./.luatypes",
-            "../GMod-MCP-Server/lua"
+            "../GMod-MCP-Server/lua",
+            "../GMod-MCP-Server/.luatypes"
         ],
         "ignoreGlobs": [
             ".tools/*.zip"
