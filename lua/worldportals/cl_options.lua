@@ -5,9 +5,6 @@ hook.Add("PopulateToolMenu", "WorldPortals_PopulateToolMenu", function()
     -- whole function; the wiki is right and only this argument is deprecated.
     ---@diagnostic disable-next-line: deprecated
     spawnmenu.AddToolMenuOption("Options", "World Portals", "WorldPortals_Options", "Settings", "", "", function(panel)
-        -- glua_ls 1.1.1 (wiki): the menu hands us a ControlPanel, not the bare Panel the stub
-        -- claims. Fixed on the wiki 2026-07-24; removable once the annotations re-scrape.
-        ---@cast panel ControlPanel
         panel:ClearControls()
 
         local title = vgui.Create("DLabel")
