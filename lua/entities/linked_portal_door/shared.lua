@@ -46,17 +46,14 @@
 ---@field WPTexture1Height number
 ---@field RenderMin Vector
 ---@field RenderMax Vector
----glua_ls 1.1.1: AccessorFunc pairs are synthesized, but as inferred rather than declared,
----so a value read through one trips infer-unknown wherever it flows into a declared slot.
+-- glua_ls upstream: AccessorFunc pairs synthesized as inferred -- https://github.com/Pollux12/gmod-glua-ls/issues/46
 ---@field SetTexture fun(self: linked_portal_door, texture: ITexture)
 ---@field GetTexture fun(self: linked_portal_door): ITexture
 ---@field SetPartnerName fun(self: linked_portal_door, name: string)
 ---@field GetPartnerName fun(self: linked_portal_door): string
 ---Narrows the notify callback's entity to this class; the base annotation only promises an Entity.
 ---@field NetworkVarNotify fun(self: linked_portal_door, name: string, callback: fun(ent: linked_portal_door, name: string, old: any, new: any))
----glua_ls 1.1.1: same for the SetupDataTables accessors - synthesized with the right types,
----but inferred, so redeclare the getters. Exit is also narrowed to this class here; the
----setters need no redeclaration because nothing reads a value back out of them.
+-- glua_ls upstream: SetupDataTables accessors synthesized as inferred -- https://github.com/Pollux12/gmod-glua-ls/issues/46
 ---@field GetExit fun(self: linked_portal_door): linked_portal_door
 ---@field GetWidth fun(self: linked_portal_door): number
 ---@field GetHeight fun(self: linked_portal_door): number

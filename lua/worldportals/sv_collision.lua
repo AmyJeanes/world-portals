@@ -110,8 +110,7 @@ end
 ---@return Entity[]?
 function wp.GatherRigidGroup(startEnt, portal)
     if not groupCache[portal] then groupCache[portal] = {} end
-    -- glua_ls 1.1.1: the empty {} seeded above loses the declared value type and is re-inferred
-    -- from the writes below, keeping only the false arm.
+    -- glua_ls upstream: empty literal loses its declared type -- https://github.com/Pollux12/gmod-glua-ls/issues/50
     ---@type table<Entity, Entity[]|false>
     local pc = groupCache[portal]
 
@@ -191,7 +190,7 @@ function wp.ArmNoCollide(portal, ent)
         wp.nocollide[ent] = recs
     end
 
-    -- glua_ls 1.1.1: infers `{ T }` from the appends, then fails to unify it with `T[]`.
+    -- glua_ls upstream: empty literal loses its declared type -- https://github.com/Pollux12/gmod-glua-ls/issues/50
     ---@diagnostic disable-next-line: assign-type-mismatch
     ---@type Entity[]
     local cons = {}

@@ -703,13 +703,13 @@ local framePortalRenderByDepth = {}
 
 -- Debug-overlay log of every render this frame, in order. Slots reused
 -- across frames; gated on `recordRenders` so overlay-off pays nothing.
--- glua_ls 1.1.1: infers `{ T }` from the appends, then fails to unify it with `T[]`.
+-- glua_ls upstream: empty literal loses its declared type -- https://github.com/Pollux12/gmod-glua-ls/issues/50
 ---@diagnostic disable-next-line: assign-type-mismatch
 ---@type wp_rendered_record[]
 local frameRenderedList = {}
 local frameRenderedCount = 0
 -- Same shape, for portals culled by ancestor-overlap (yellow in overlay).
--- glua_ls 1.1.1: as above.
+-- glua_ls upstream: empty literal loses its declared type -- https://github.com/Pollux12/gmod-glua-ls/issues/50
 ---@diagnostic disable-next-line: assign-type-mismatch
 ---@type wp_render_record[]
 local frameCulledList = {}

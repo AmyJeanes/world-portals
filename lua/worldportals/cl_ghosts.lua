@@ -112,7 +112,7 @@ local sCZ = {0, 0, 0, 0, 0, 0, 0, 0}
 -- Does ent's bounds cross the portal plane within the opening? Conservative - a
 -- near-miss just makes a fully-clipped, invisible ghost.
 ---@param ent Entity
--- glua_ls 1.1.1: the hook overload already types these, but only as inferred.
+-- glua_ls upstream: hook overload types these, but as inferred -- https://github.com/Pollux12/gmod-glua-ls/issues/46
 ---@param portal linked_portal_door
 local function straddles(ent, portal)
     local pos = portal:GetPos()
@@ -632,7 +632,7 @@ local function startStraddle(ent, portal)
     -- ERRORS on a ClientsideModel, so override the getter instead (the proxy calls
     -- this Lua method). Players only.
     if ent:IsPlayer() then
-        -- glua_ls 1.1.1: @return_cast narrowing is lost inside a closure, so restate it.
+        -- glua_ls upstream: @return_cast lost inside a closure -- https://github.com/Pollux12/gmod-glua-ls/issues/49
         ---@cast ent Player
         ghost.GetPlayerColor = function() return ent:GetPlayerColor() end
     end
