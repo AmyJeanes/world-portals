@@ -1,8 +1,6 @@
 -- Options
 
 hook.Add("PopulateToolMenu", "WorldPortals_PopulateToolMenu", function()
-    -- glua_ls upstream: @deprecated hoisted off the config arg -- https://github.com/Pollux12/annotations-gmod-glua-ls/issues/7
-    ---@diagnostic disable-next-line: deprecated
     spawnmenu.AddToolMenuOption("Options", "World Portals", "WorldPortals_Options", "Settings", "", "", function(panel)
         panel:ClearControls()
 
