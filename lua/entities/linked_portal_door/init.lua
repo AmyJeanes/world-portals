@@ -96,7 +96,6 @@ local function applyTeleport( ent, portal, exit )
     end
     -- Adjust hoverball target height to match the new relative position after teleporting so it doesn't snap back
     if ent:GetClass() == "gmod_hoverball" then
-        ---@cast ent gmod_hoverball
         ent:SetTargetZ( ent:GetTargetZ() + (new_pos.z - ent:GetPos().z) )
     end
     ent:SetPos( new_pos )

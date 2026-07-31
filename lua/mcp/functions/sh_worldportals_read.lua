@@ -23,7 +23,6 @@ MCP:AddFunction({
     },
     handler = function(args)
         args = args or {}
-        ---@cast args table
 
         local center, centerSource
         if args.point ~= nil then

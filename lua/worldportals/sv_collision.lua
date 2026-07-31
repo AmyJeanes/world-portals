@@ -80,7 +80,6 @@ local function walkRigidGroup(startEnt, portal)
                 group[#group + 1] = e
             end
             for _, con in ipairs(constraint.GetTable(e)) do
-                ---@cast con wp.Constraint
                 -- Skip NoCollide edges: they bind no relative motion, and our own pass-through
                 -- no-collides would otherwise bridge the mount into the set.
                 if con.Type ~= "NoCollide" then

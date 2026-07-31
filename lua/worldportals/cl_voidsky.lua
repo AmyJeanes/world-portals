@@ -45,7 +45,7 @@ local skyView = {
     drawviewmodel = false, drawhud = false, drawmonitors = false,
     dopostprocess = false, bloomtone = false,
     znear = 2, zfar = 56756, viewid = 1,
-} --[[@as ViewData]]
+}
 
 ---@param camOrigin Vector
 ---@param camAngle Angle

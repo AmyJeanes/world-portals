@@ -901,7 +901,7 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
             if recordRenders then
                 local slot = frameRenderedList[frameRenderedCount + 1]
                 if not slot then
-                    slot = {camOrigin = Vector(), camAngle = Angle(), cumPoly = {}} --[[@as wp_rendered_record]]
+                    slot = {camOrigin = Vector(), camAngle = Angle(), cumPoly = {}}
                     frameRenderedList[frameRenderedCount + 1] = slot
                 end
                 slot.portal = portal
@@ -1010,7 +1010,7 @@ function wp.renderportals( plyOrigin, plyAngle, width, height, fov, depth, paren
                                 + efz * (exit_pos.z - efz * 0.5)
                     render.PushCustomClipPlane( exit_forward, clipD )
                         -- render.RenderView is our own ViewData?-typed override; rv is the reused ViewData struct.
-                        render.RenderView( rv --[[@as ViewData]] )
+                        render.RenderView( rv )
                     wp.drawing = oldDrawing
                     wp.drawingent = oldDrawingEnt
                     wp.drawingdepth = oldDrawingDepth

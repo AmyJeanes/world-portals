@@ -181,7 +181,6 @@ function wp.createfalseworld( portal, plyOrigin, plyAngle, width, height, fov )
                     end
                 end
                 if IsValid( part ) then
-                    ---@cast rawpart worldportals_false_world_part
                     local color = rawpart.color
                     if color then
                         render.SetColorModulation( color.x, color.y, color.z )

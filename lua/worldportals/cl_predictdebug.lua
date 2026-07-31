@@ -131,7 +131,6 @@ hook.Add("HUDPaint", "WorldPortals_DebugPredictHUD", function()
         y = y + lh / 2
         line("---- Predicted teleports (newest first) ----", Color(255, 220, 120))
         for i, e in ipairs(recentTeleports) do
-            ---@cast e wp.PredictTeleportEvent
             local ago = CurTime() - e.time
             line(string.format("[%d] portal=%d  %.3fs ago  frame=%d", i, e.portal, ago, e.frame))
             line(string.format("    pos:  %.1f,%.1f,%.1f -> %.1f,%.1f,%.1f", e.oldPos.x, e.oldPos.y, e.oldPos.z, e.newPos.x, e.newPos.y, e.newPos.z))

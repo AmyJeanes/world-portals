@@ -332,7 +332,6 @@ MCP:AddFunction({
     requires = { "worldportals_control" },
     handler = function(args)
         args = args or {}
-        ---@cast args table
 
         if istable(args.specs) then return createBatch(args) end
 
