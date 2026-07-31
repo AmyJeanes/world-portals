@@ -8,8 +8,8 @@ error("glua_overrides.lua contains type annotations only and must never be execu
 
 -- Local annotation overrides for gaps in the provisioned GLua annotations.
 
--- The engine takes a list of lights here, not the single LocalLight the annotation
--- says - the wiki documents "up to 4 tables", so this needs an upstream scraper fix.
+-- glua_ls upstream: the wiki page path leaks into the generated type, so the annotated
+-- `Structures/LocalLight[]` resolves to a bogus class `Structures` -- https://github.com/Pollux12/annotations-gmod-glua-ls/issues/16
 ---@param lights? LocalLight[]
 function render.SetLocalModelLights(lights) end
 

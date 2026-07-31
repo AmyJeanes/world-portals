@@ -211,9 +211,6 @@ local function portalReached(portalEnt, portalDist, trace)
     return IsValid(exit) and trace.Entity == hook.Call("wp-tracefilter", GAMEMODE, exit)
 end
 
--- glua_ls upstream: hook overload types these, but as inferred -- https://github.com/Pollux12/gmod-glua-ls/issues/46
----@param ent Entity
----@param data Bullet
 hook.Add("EntityFireBullets", "WorldPortals_Bullets", function(ent,data)
     if wp.portals[1] == nil then return end
     local src, dir, distance = data.Src, data.Dir, data.Distance

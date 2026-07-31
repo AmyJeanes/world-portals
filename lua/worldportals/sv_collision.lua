@@ -110,8 +110,6 @@ end
 ---@return Entity[]?
 function wp.GatherRigidGroup(startEnt, portal)
     if not groupCache[portal] then groupCache[portal] = {} end
-    -- glua_ls upstream: empty literal loses its declared type -- https://github.com/Pollux12/gmod-glua-ls/issues/50
-    ---@type table<Entity, Entity[]|false>
     local pc = groupCache[portal]
 
     local cached = pc[startEnt]
