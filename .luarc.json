@@ -7,8 +7,8 @@
     },
     "workspace": {
         "library": [
-            "./.tools/glua-api",
             "./.luatypes",
+            "./.tools/glua-api",
             "../GMod-MCP-Server/lua",
             "../GMod-MCP-Server/.luatypes"
         ],
