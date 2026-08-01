@@ -4,7 +4,10 @@ AddCSLuaFile( "shared.lua" )
 
 include( "shared.lua" )
 
-AccessorFunc( ENT, "partnername", "PartnerName" )
+-- FORCE_STRING is the only thing that states the accessors' type; without it the generated
+-- setter takes anything and GetPartnerName has to be declared by hand. Both callers pass
+-- Source entity I/O, which is always a string, so the coercion changes nothing at runtime.
+AccessorFunc( ENT, "partnername", "PartnerName", FORCE_STRING )
 
 util.AddNetworkString("WorldPortals_VRMod_SetAngle")
 util.AddNetworkString("WorldPortals_Teleport")
