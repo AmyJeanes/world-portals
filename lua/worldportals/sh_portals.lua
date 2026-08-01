@@ -9,8 +9,6 @@ wp.portals = wp.portals or {}
 local registered = {}
 
 local function rebuild()
-    -- glua_ls upstream: empty literal loses its declared type -- https://github.com/Pollux12/gmod-glua-ls/issues/50
-    ---@diagnostic disable-next-line: assign-type-mismatch
     ---@type linked_portal_door[]
     local list = {}
     for portal in pairs(registered) do

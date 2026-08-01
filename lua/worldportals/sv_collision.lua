@@ -187,8 +187,6 @@ function wp.ArmNoCollide(portal, ent)
         wp.nocollide[ent] = recs
     end
 
-    -- glua_ls upstream: empty literal loses its declared type -- https://github.com/Pollux12/gmod-glua-ls/issues/50
-    ---@diagnostic disable-next-line: assign-type-mismatch
     ---@type Entity[]
     local cons = {}
     for _, s in ipairs(gatherPhaseSolids(portal, ent)) do

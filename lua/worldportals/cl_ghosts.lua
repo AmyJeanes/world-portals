@@ -153,6 +153,7 @@ local function straddles(ent, portal)
     -- it; test where that crossing lands against the opening.
     for _, edge in ipairs(OBB_EDGES) do
         local a, b = edge[1], edge[2]
+        -- The corner scratch arrays hold all 8 slots, so an edge index is never a hole.
         local ax = sCX[a] --[[@as number]]
         local bx = sCX[b] --[[@as number]]
         if (ax < 0) ~= (bx < 0) then
