@@ -305,6 +305,8 @@ function WorldPortals_TraceLine(data)
             -- (else e.g. the camera tool spawns inside the portal). HitPos/Normal
             -- stay exit-side, so see-through traces are unchanged.
             tr.StartPos = trace.StartPos
+            -- Mark the trace as having crossed a portal, so consumers can detect it
+            tr.WorldPortal = portalEnt
             return tr
         end
     end

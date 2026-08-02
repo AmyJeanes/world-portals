@@ -19,6 +19,10 @@ function render.SetLocalModelLights(lights) end
 ---@return TraceResult
 function util.RealTraceLine(traceConfig) end
 
+-- Set by wp's util.TraceLine detour, so its presence is the reliable "did this cross" test.
+---@class TraceResult
+---@field WorldPortal linked_portal_door? the portal a crossed trace entered
+
 -- gmod_hoverball's target height is a per-instance NetworkVar accessor added at spawn, so
 -- the annotations don't see it. Declare it so the teleport transform can shift a crossing
 -- hoverball's target Z (else it fights back to its pre-teleport height).
