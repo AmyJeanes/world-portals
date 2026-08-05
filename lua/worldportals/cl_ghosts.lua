@@ -258,6 +258,11 @@ local function clipToHalf(ent, nrm, d)
     ent:SetRenderClipPlaneEnabled(true)
 end
 
+-- Our body/weapon overrides; the guards below never chain one into another (an entity
+-- that is both a ghost body and a weapon-ghost would otherwise recurse forever on draw).
+---@type table<function, boolean>
+local wpOverrides = setmetatable({}, { __mode = "k" })
+
 -- Clip the real entity to its entry half, recomputing the entry plane here at the draw
 -- so it tracks a fast-moving portal (mirror of the ghost's exit plane). Forwards the
 -- studio render flags to DrawModel and any chained override (e.g. the prop-spawn
@@ -269,8 +274,9 @@ local function makeOriginalOverride(rec)
             updateEntryPlane(rec)
             clipToHalf(self, rec.entryNrm, rec.entryD)
         end
-        if rec.savedRenderOverride then
-            rec.savedRenderOverride(self, flags)
+        local saved = rec.savedRenderOverride
+        if saved and not wpOverrides[saved] then
+            saved(self, flags)
         elseif self.Draw then
             -- RenderOverride stands in for ENT:Draw, so a scripted entity has to be sent back through it.
             self:Draw(flags)
@@ -423,8 +429,9 @@ local function makeWeaponOriginalOverride(rec)
             updateEntryPlane(rec)
             clipToHalf(self, rec.entryNrm, rec.entryD)
         end
-        if rec.weaponSavedOverride then
-            rec.weaponSavedOverride(self, flags)
+        local saved = rec.weaponSavedOverride
+        if saved and not wpOverrides[saved] then
+            saved(self, flags)
         else
             self:DrawModel(flags)
         end
@@ -487,7 +494,7 @@ local function updateWeapon(rec)
     if not (ent:IsNPC() or ent:IsPlayer()) then return end
 
     local w = ent:GetActiveWeapon()
-    if not IsValid(w) then
+    if not IsValid(w) or w == ent then
         clearWeapon(rec)
         return
     end
@@ -526,12 +533,15 @@ local function updateWeapon(rec)
 
         rec.weaponModel = model
         rec.weaponOriginalOverride = rec.weaponOriginalOverride or makeWeaponOriginalOverride(rec)
+        wpOverrides[rec.weaponOriginalOverride] = true
     end
     rec.weapon = w
     rec.weaponSkin = skin
 
     if w.RenderOverride ~= rec.weaponOriginalOverride then
-        rec.weaponSavedOverride = w.RenderOverride
+        local prev = w.RenderOverride
+        if prev and wpOverrides[prev] then prev = nil end
+        rec.weaponSavedOverride = prev
         w.RenderOverride = rec.weaponOriginalOverride
     end
 
@@ -557,7 +567,9 @@ end
 local function ensureOriginalOverride(rec)
     local ent = rec.ent
     if ent.RenderOverride ~= rec.originalOverride then
-        rec.savedRenderOverride = ent.RenderOverride
+        local prev = ent.RenderOverride
+        if prev and wpOverrides[prev] then prev = nil end
+        rec.savedRenderOverride = prev
         ent.RenderOverride = rec.originalOverride
     end
 end
@@ -656,6 +668,7 @@ local function startStraddle(ent, portal)
         sig = {},
     }
     rec.originalOverride = makeOriginalOverride(rec)
+    wpOverrides[rec.originalOverride] = true
     ghost.RenderOverride = makeGhostOverride(rec)
     wp.ghosts[ent] = rec
     return rec
