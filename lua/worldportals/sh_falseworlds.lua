@@ -4,6 +4,11 @@
 wp.falseworlds = wp.falseworlds or {}
 -- Client-only cache of long-lived ClientsideModel parts keyed by false-world id.
 -- Kept separate from wp.falseworlds so re-registering doesn't have to fight table.Copy.
+---@class wp_falseworld_cache
+---@field parts table<any, Entity>
+---@field skybox Entity?
+
+---@type table<string, wp_falseworld_cache>
 wp.falseworldscache = wp.falseworldscache or {}
 
 local VECTOR_ORIGIN = Vector()
@@ -33,6 +38,7 @@ end
 if SERVER then return end
 
 ---@param id string
+---@return wp_falseworld_cache
 local function ensureCache( id )
     local cache = wp.falseworldscache[id]
     if cache then return cache end
@@ -188,7 +194,8 @@ function wp.createfalseworld( portal, plyOrigin, plyAngle, width, height, fov )
                         render.SetColorModulation( 1, 1, 1 )
                     end
                     render.ResetModelLighting( baselight.x, baselight.y, baselight.z )
-                    render.SetLocalModelLights( falseworld.lights )
+                    -- glua_ls upstream: the SetLocalModelLights stub types its param as a bogus `Structures`; ours is `LocalLight[]` -- https://github.com/Pollux12/annotations-gmod-glua-ls/issues/16
+                    render.SetLocalModelLights( falseworld.lights --[[@as any]] )
                     part:DrawModel()
                 end
             end

@@ -5,10 +5,12 @@
     "diagnostics": {
         "disable": []
     },
+    "gmod": {
+        "annotationsPath": "./.tools/glua-api"
+    },
     "workspace": {
         "library": [
             "./.luatypes",
-            "./.tools/glua-api",
             "../GMod-MCP-Server/lua",
             "../GMod-MCP-Server/.luatypes"
         ],

@@ -199,6 +199,7 @@ end
 -- distance leaves margin) or the engine slices the corners off; then pin its depth to the far plane so
 -- any real geometry, near or far, still draws in front.
 ---@param origin Vector
+---@return number
 local function drawSkyCube( origin )
     buildSkyFaces()
     local vs = render.GetViewSetup()

@@ -1,6 +1,8 @@
 -- MCP world-portals write functions
 
 MCP.wp = MCP.wp or {}
+-- glua_ls upstream: 1.2.0 drops cross-file resolution of this MCP.wp alias; the type annotation restores it -- https://github.com/Pollux12/gmod-glua-ls/issues/83
+---@type wp_mcp_helpers
 local wp_ = MCP.wp
 
 MCP:AddCapability({

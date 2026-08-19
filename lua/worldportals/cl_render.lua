@@ -96,6 +96,7 @@ function wp.GetRecurseDepth()
     return recurseDepth
 end
 
+---@return number
 function wp.GetPortalRenderDepth()
     return wp.renderdepth or wp.drawingdepth or 0
 end
