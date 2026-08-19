@@ -51,9 +51,6 @@
 ---Narrows the Entity that NetworkVar can express to the portal it always is. Also what the
 ---generated wiki renders as this variable's type, so it is not only a typing concern.
 ---@field GetExit fun(self: linked_portal_door): linked_portal_door
----glua_ls upstream: a NetworkVar-synthesized accessor resolves to the right type but reads as
----inferred, so values derived from it trip infer-unknown -- https://github.com/Pollux12/gmod-glua-ls/issues/73
----@field GetZFar fun(self: linked_portal_door): number
 
 ENT.Type                = "anim"
 ENT.RenderGroup         = RENDERGROUP_BOTH -- fixes translucent stuff rendering behind the portal
