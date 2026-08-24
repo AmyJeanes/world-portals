@@ -1,7 +1,7 @@
 include("shared.lua")
 
 CreateClientConVar("worldportals_debug_collision", "0", true, false,
-    "World Portals - draw portal collision frames (debug)", 0, 1)
+    "World Portals - draw portal collision frames and the Touch trigger volume (debug)", 0, 1)
 
 -- Collision-only; the server owns the physics hull. Never drawn normally.
 function ENT:Initialize()
@@ -15,6 +15,7 @@ local FILL = Color(0, 180, 255, 50)
 local WIRE = Color(0, 230, 255, 255)
 local FILL_OFF = Color(255, 60, 60, 50)
 local WIRE_OFF = Color(255, 90, 90, 255)
+local TRIGGER_WIRE = Color(255, 210, 0, 220)   -- the door's deep Touch trigger volume
 
 -- Reuses ENT:FrameSlabs (the server hull's own builder) so the overlay is exactly
 -- the collision shape.
@@ -41,6 +42,10 @@ hook.Add("PostDrawTranslucentRenderables", "WorldPortals_DebugCollision", functi
                     render.DrawBox(pos, ang, mn, mx, fill)
                     render.DrawWireframeBox(pos, ang, mn, mx, wire, true)
                 end
+            end
+            -- Portal trigger volume (for ENT:Touch), larger than the portal frame to catch fast-moving entities
+            if portal.TriggerMin and portal.TriggerMax then
+                render.DrawWireframeBox(portal:GetPos(), portal:GetAngles(), portal.TriggerMin, portal.TriggerMax, TRIGGER_WIRE, true)
             end
         end
     end

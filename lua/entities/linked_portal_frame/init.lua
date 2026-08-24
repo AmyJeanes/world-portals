@@ -46,9 +46,9 @@ function ENT:BuildFrame(width, height, thickness)
 
     self:SetSolid(SOLID_VPHYSICS)
     self:PhysicsInitMultiConvex(meshes)
-    -- COLLISION_GROUP_WEAPON hits world+props but not players, so the frame funnels
-    -- props without changing player movement.
-    self:SetCollisionGroup(COLLISION_GROUP_WEAPON)
+    -- Funnels props through the opening, passes players, and blocks bullet/use traces - and passes
+    -- PLAYER_MOVEMENT, the collision group NPC pathfinding traces use, so NPC nav routes through.
+    self:SetCollisionGroup(COLLISION_GROUP_INTERACTIVE_DEBRIS)
 
     local phys = self:GetPhysicsObject()
     if not IsValid(phys) then return false end
@@ -78,7 +78,7 @@ end
 ---@param enabled boolean
 function ENT:SetCollisionEnabled(enabled)
     self.CollisionEnabled = enabled
-    self:SetCollisionGroup(enabled and COLLISION_GROUP_WEAPON or COLLISION_GROUP_IN_VEHICLE)
+    self:SetCollisionGroup(enabled and COLLISION_GROUP_INTERACTIVE_DEBRIS or COLLISION_GROUP_IN_VEHICLE)
 end
 
 -- Follow the portal WITHOUT being parented, driving both the entity transform and

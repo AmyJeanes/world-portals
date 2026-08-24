@@ -46,11 +46,18 @@
 ---@field WPTexture1Height number
 ---@field RenderMin Vector
 ---@field RenderMax Vector
+---@field TriggerMin Vector
+---@field TriggerMax Vector
 ---Narrows the notify callback's entity to this class; the base annotation only promises an Entity.
 ---@field NetworkVarNotify fun(self: linked_portal_door, name: string, callback: fun(ent: linked_portal_door, name: string, old: any, new: any))
 ---Narrows the Entity that NetworkVar can express to the portal it always is. Also what the
 ---generated wiki renders as this variable's type, so it is not only a typing concern.
 ---@field GetExit fun(self: linked_portal_door): linked_portal_door
+
+-- Calculate maximum possible NPC step per think and oversize it a bit just in case
+local MAX_NPC_SPEED = 500
+local NPC_THINK_INTERVAL = 0.1
+local TRIGGER_MARGIN = 1.5
 
 ENT.Type                = "anim"
 ENT.RenderGroup         = RENDERGROUP_BOTH -- fixes translucent stuff rendering behind the portal
@@ -85,7 +92,19 @@ function ENT:SetupBounds(w, h, t)
         { Vector(self.RenderMin.x, self.RenderMax.y, self.RenderMin.z), Vector(self.RenderMin.x, self.RenderMax.y, self.RenderMax.z), Vector(self.RenderMax.x, self.RenderMax.y, self.RenderMax.z), Vector(self.RenderMax.x, self.RenderMax.y, self.RenderMin.z) },
     }
 
-    self:SetCollisionBounds( self.RenderMin, self.RenderMax )
+    -- Make the trigger volume deep enough to catch fast-moving props and NPCs calculated
+    -- from portal thickness, max physics prop step per tick, and max NPC step per think
+    local svMaxVel = GetConVar("sv_maxvelocity")
+    local propStep = (svMaxVel and svMaxVel:GetFloat() or 3500) * engine.TickInterval()
+    local npcStep = MAX_NPC_SPEED * NPC_THINK_INTERVAL
+    local trigDepth = math.max(thickness, math.max(propStep, npcStep) * TRIGGER_MARGIN)
+    self.TriggerMin = Vector(-(5 + trigDepth), -width / 2, -height / 2)
+    self.TriggerMax = Vector(trigDepth, width / 2, height / 2)
+    if SERVER then
+        self:SetCollisionBounds( self.TriggerMin, self.TriggerMax )
+    else
+        self:SetCollisionBounds( self.RenderMin, self.RenderMax )
+    end
 
     if CLIENT then
         self:UpdateRenderBounds()

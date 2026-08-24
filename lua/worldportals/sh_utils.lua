@@ -95,6 +95,19 @@ function wp.IsPhysicalMover( ent )
         or ent:IsRagdoll() or ent:IsNPC() or ent:IsPlayer()
 end
 
+---@param ent Entity
+---@return Vector
+function wp.MoverVelocity( ent )
+    if ent:IsNPC() then
+        -- NPCs don't have proper velocity, so use ground speed if available instead
+        local speed = ent:GetSequenceGroundSpeed( ent:GetSequence() )
+        if speed and speed > 0 then
+            return ent:GetForward() * speed
+        end
+    end
+    return ent:GetVelocity()
+end
+
 -- The structure the portal is mounted on (its parent chain) - client-safe, unlike constraints.
 ---@param ent Entity
 ---@param portal linked_portal_door

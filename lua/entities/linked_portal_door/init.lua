@@ -80,7 +80,7 @@ local TP_REFIRE_COOLDOWN = 0.2   -- window to suppress a group bouncing straight
 ---@param exit linked_portal_door
 local function applyTeleport( ent, portal, exit )
     local new_pos = wp.TransformPortalPos( ent:GetPos(), portal, exit )
-    local new_velocity = wp.TransformPortalVector( ent:GetVelocity(), portal, exit )
+    local new_velocity = wp.TransformPortalVector( wp.MoverVelocity( ent ), portal, exit )
     local new_angle = wp.TransformPortalAngle( ent:GetAngles(), portal, exit )
 
     ---@type table<integer, {pos: Vector, ang: Angle}>?
@@ -110,6 +110,11 @@ local function applyTeleport( ent, portal, exit )
     -- Disarm the entry explicitly - a SetPos teleport can skip its EndTouch, leaving the
     -- prop no-collided against the entry's parent. The exit side arms via its own Touch.
     wp.DisarmNoCollide( ent, portal )
+
+    -- The teleport moved the entity, so its front-of-portal flags are stale, clear them so a
+    -- leftover can't wrongly trigger another teleport at a different portal.
+    ent.wpApproached = nil
+
     portal:TriggerOutput("OnEntityTeleportFromMe", ent)
     exit:TriggerOutput("OnEntityTeleportToMe", ent)
     if store then
@@ -300,17 +305,16 @@ function ENT:Touch( ent )
         end
     end
 
-    -- Arm the parent pass-through for any dynamic or physgun-held prop, in any
+    -- Arm the parent pass-through for any moving or physgun-held mover, in any
     -- direction (a held prop's velocity wanders). Static props excluded; wp-shouldtp
     -- guards the structure.
-    local entphys = ent:GetPhysicsObject()
-    if (IsValid(entphys) and entphys:GetVelocity():LengthSqr() > 25) or ent:IsPlayerHolding() then
+    local moverVel = wp.MoverVelocity( ent )
+    if moverVel:LengthSqr() > 25 or ent:IsPlayerHolding() then
         wp.ArmNoCollide(self, ent)
     end
 
-    -- Teleport only when the prop is crossing toward the exit, else it ping-pongs.
+    -- Direction / anti-ping-pong is handled per body below (crossing flag / momentum gate).
     local normal = self:GetForward()
-    if ent:GetVelocity():GetNormalized():Dot( normal ) >= 0 then return end
 
     -- Touch fires per member; evaluate the whole rigid group only once per tick per portal.
     local tick = engine.TickCount()
@@ -332,7 +336,17 @@ function ENT:Touch( ent )
                                  + math.abs((maxs.z - mins.z) * ent:GetUp():Dot(normal)) )
         local center = ent:LocalToWorld( ent:OBBCenter() )
         local center_dist = wp.DistanceToPlane( center, self:GetPos(), normal )
-        if inFace( self, center ) and center_dist <= half_depth * (1 - 2 * cvTpFraction:GetFloat()) then
+        -- Only entities that were in front of the portal can teleport through it - matters most with a
+        -- large collision depth, where an entity can end up behind the portal without ever crossing it.
+        ent.wpApproached = ent.wpApproached or {}
+        -- prevDist is where it was a tick ago, catching a fast entity that was in front only last tick.
+        local prevDist = center_dist - normal:Dot( moverVel ) * engine.TickInterval()
+        if center_dist > 0 or prevDist > 0 then ent.wpApproached[self] = true end
+        -- NPCs teleport like players, so treat them with the same center gate as them instead of normal props
+        -- If they use the default 0.9 fraction, they can get stuck past the portal center and unable to nav out
+        local frac = ent:IsNPC() and 0.5 or cvTpFraction:GetFloat()
+        if ent.wpApproached[self] and inFace( self, center )
+            and center_dist <= half_depth * (1 - 2 * frac) then
             applyTeleport( ent, self, exit )
         end
         return
@@ -359,6 +373,7 @@ end
 ---@param ent Entity
 function ENT:EndTouch( ent )
     wp.DisarmNoCollide( ent, self )
+    if ent.wpApproached then ent.wpApproached[self] = nil end
 end
 
 -- Create/destroy the portal's linked_portal_frame child (a perimeter physics hull
