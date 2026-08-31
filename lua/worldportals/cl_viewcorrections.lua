@@ -50,9 +50,10 @@ local function getPredictDelta(ply)
     wp.predictSanityFailed = nil
     local delta = netPos - ply:GetPos()
     local dist = delta:Length()
-    -- netPos steps per server tick vs per-frame GetPos, so the gap sawtooths up to a
-    -- tick of movement at zero lag - skip under two ticks (kills host stutter, window
-    -- stays armed). Above that is real lag: full shift, camera exactly on server pos.
+    -- NetworkOrigin updates once per server tick while GetPos updates every frame.
+    -- Ignore up to two ticks of movement to prevent low-ping stutter, but keep the
+    -- correction active in case the gap grows. For larger gaps, apply the full shift;
+    -- ping checks and gradual blends brought back bad camera frames at high lag.
     local deadzone = ply:GetVelocity():Length() * engine.TickInterval() * 2
     wp.predictDeadzoneNow = deadzone
     if dist <= deadzone then
