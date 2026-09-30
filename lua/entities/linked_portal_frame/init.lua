@@ -7,6 +7,9 @@ include("shared.lua")
 -- single-tick warp can't be swept). Mirrors ComputeShadowControl's teleportdistance.
 local SHADOW_TELEPORT_DIST = 128
 
+-- Debris hits ordinary props but never a player's physics shadow, which would snap them back out.
+local FRAME_GROUP = COLLISION_GROUP_DEBRIS
+
 -- Eight corners of an axis-aligned box in this entity's local space.
 ---@param x0 number
 ---@param x1 number
@@ -46,9 +49,7 @@ function ENT:BuildFrame(width, height, thickness)
 
     self:SetSolid(SOLID_VPHYSICS)
     self:PhysicsInitMultiConvex(meshes)
-    -- Funnels props through the opening, passes players, and blocks bullet/use traces - and passes
-    -- PLAYER_MOVEMENT, the collision group NPC pathfinding traces use, so NPC nav routes through.
-    self:SetCollisionGroup(COLLISION_GROUP_INTERACTIVE_DEBRIS)
+    self:SetCollisionGroup(FRAME_GROUP)
 
     local phys = self:GetPhysicsObject()
     if not IsValid(phys) then return false end
@@ -78,7 +79,7 @@ end
 ---@param enabled boolean
 function ENT:SetCollisionEnabled(enabled)
     self.CollisionEnabled = enabled
-    self:SetCollisionGroup(enabled and COLLISION_GROUP_INTERACTIVE_DEBRIS or COLLISION_GROUP_IN_VEHICLE)
+    self:SetCollisionGroup(enabled and FRAME_GROUP or COLLISION_GROUP_IN_VEHICLE)
 end
 
 -- Follow the portal WITHOUT being parented, driving both the entity transform and
